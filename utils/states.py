@@ -29,3 +29,19 @@ class SuperAdminResellerStates(StatesGroup):
     entering_commission_percent = State()
     entering_credit_limit = State()
     entering_order_prefix = State()
+
+
+class SuperAdminCryptoStates(StatesGroup):
+    entering_coin = State()
+    entering_address = State()
+    entering_network = State()
+    entering_price = State()
+
+
+class SuperAdminBlacklistStates(StatesGroup):
+    entering_telegram_id = State()
+    entering_reason = State()
+
+
+class SuperAdminBroadcastStates(StatesGroup):
+    entering_text = State()
