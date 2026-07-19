@@ -14,6 +14,36 @@ from utils.states import SuperAdminResellerStates
 router = Router(name="admin_reseller_management")
 
 
+@router.message(F.text == "/start")
+async def admin_start(message: Message):
+    await message.answer(
+        "👋 به پنل مدیریت کل خوش آمدید.\n\n"
+        "📋 مدیریت نماینده‌ها:\n"
+        "/add_reseller — افزودن نماینده جدید\n"
+        "/list_resellers — لیست نماینده‌ها\n"
+        "/suspend <id> — تعلیق نماینده\n"
+        "/activate_reseller <id> — فعال‌سازی نماینده\n\n"
+        "💰 کیف‌پول و استرداد:\n"
+        "/pending_topups — شارژهای در انتظار تأیید\n"
+        "/confirm_topup <id> — تأیید شارژ\n"
+        "/pending_disputes — درخواست‌های استرداد در انتظار\n"
+        "/approve_dispute <id> — تأیید استرداد\n"
+        "/reject_dispute <id> — رد استرداد\n\n"
+        "⚙️ فیچرها و تنظیمات:\n"
+        "/pending_features — درخواست‌های فیچر شارژ/VPN\n"
+        "/approve_feature <id> / /reject_feature <id>\n"
+        "/set_crypto COIN ADDR NET PRICE\n"
+        "/blacklist — لیست سیاه\n"
+        "/blacklist_add <id> دلیل\n"
+        "/broadcast متن — اطلاعیه همگانی\n"
+        "/bills_on / /bills_off\n\n"
+        "📊 گزارش:\n"
+        "/platform_report — گزارش سود واقعی کل پلتفرم\n\n"
+        "🗄 بک‌آپ:\n"
+        "/backup / /restore"
+    )
+
+
 @router.message(F.text == "/add_reseller")
 async def start_add_reseller(message: Message, state: FSMContext):
     await state.set_state(SuperAdminResellerStates.entering_bot_token)
