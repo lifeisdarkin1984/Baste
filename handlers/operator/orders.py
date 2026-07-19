@@ -10,12 +10,18 @@
 core/permissions_middleware.py (OrderActionPermissionMiddleware) کنترل
 می‌شود که هم صاحب نماینده و هم اپراتور فعال (از جدول reseller_operators) را
 مجاز می‌داند و بقیه را رد می‌کند.
+
+نکته‌ی فاز ۴: قبلاً این لیست فقط متن بود و دکمه‌ی تأیید/رد نداشت — یعنی
+اپراتور باید آیدی سفارش را از متن می‌خواند و دستی تایپ می‌کرد. الان از همون
+دکمه‌های order_review_buttons استفاده می‌کند (همان‌هایی که در
+handlers/reseller/orders.py پردازش می‌شوند).
 """
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
 
 from database.db import fetch_one, fetch_all
+from utils.keyboards import order_review_buttons
 
 router = Router(name="operator_orders")
 
@@ -31,7 +37,9 @@ async def is_active_operator(reseller_id: int, telegram_user_id: int) -> bool:
 
 @router.message(Command("pending_orders"))
 async def list_pending_orders(message: Message, reseller_id: int):
-    """اپراتور/نماینده می‌تواند سفارش‌های در انتظار بررسی را ببیند."""
+    """اپراتور/نماینده می‌تواند سفارش‌های در انتظار بررسی را ببیند.
+    (نکته: پنل نماینده همین لیست را با دکمه‌ی 🧾 سفارش‌ها از منو هم دارد؛
+    این دستور مخصوص اپراتوری است که هنوز عضو منوی کامل نماینده نیست.)"""
     if not (
         await is_active_operator(reseller_id, message.from_user.id)
         or (await fetch_one("SELECT telegram_numeric_id FROM resellers WHERE id = %s", (reseller_id,)))
@@ -51,5 +59,6 @@ async def list_pending_orders(message: Message, reseller_id: int):
     for r in rows:
         await message.answer(
             f"سفارش {r['order_code']} | قیمت بسته: {r['package_price']:,.0f} | "
-            f"کمیسیون: {r['commission_amount']:,.0f}"
+            f"کمیسیون: {r['commission_amount']:,.0f}",
+            reply_markup=order_review_buttons(r["id"]),
         )
