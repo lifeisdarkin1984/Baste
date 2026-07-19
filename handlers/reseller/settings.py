@@ -1,162 +1,135 @@
 """
-تنظیمات نماینده در فاز ۲: کدهای تخفیف، رفرال، جوین اجباری، درخواست فروش
-شارژ/VPN، شارژ کیف‌پول با زرین‌پال/رمزارز.
+تنظیمات نماینده: کدهای تخفیف، رفرال، جوین اجباری، درخواست فروش شارژ/VPN.
 """
 from decimal import Decimal, InvalidOperation
 
 from aiogram import Router, F
-from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
 
-from database.db import execute, fetch_one
-from services.discount_service import validate_discount_code  # noqa: F401 (used by customer flow)
+from database.db import execute
 from services.referral_service import set_referral_enabled, set_referral_profit_percent, get_referral_settings
 from services.forced_join_service import add_forced_channel, get_forced_channels
 from services.feature_flag_service import request_feature
-from services.zarinpal_service import create_payment_request, PLATFORM_ZARINPAL_MERCHANT_ID
-from services.crypto_service import list_crypto_options, request_crypto_topup
+from utils.states import ResellerSettingsStates
+from utils.keyboards import settings_submenu, back_to_reseller_menu_button
 
 router = Router(name="reseller_settings")
 
 
-# ---------- کدهای تخفیف ----------
-@router.message(Command("add_discount"))
-async def add_discount_code(message: Message, reseller_id: int):
-    """فرمت: /add_discount CODE PERCENT USAGE_LIMIT   مثال: /add_discount EID10 10 100"""
-    parts = message.text.split()
-    if len(parts) != 4:
-        await message.answer("فرمت درست: /add_discount CODE PERCENT USAGE_LIMIT")
-        return
-    _, code, percent, usage_limit = parts
-    try:
-        percent_d = Decimal(percent)
-        usage_limit_i = int(usage_limit)
-    except (InvalidOperation, ValueError):
-        await message.answer("درصد و سقف استفاده باید عدد باشند.")
-        return
-
-    await execute(
-        "INSERT INTO discount_codes (reseller_id, code, percent, usage_limit) VALUES (%s, %s, %s, %s)",
-        (reseller_id, code.strip().upper(), percent_d, usage_limit_i),
+@router.callback_query(F.data == "rmenu:settings")
+async def settings_menu(callback: CallbackQuery, reseller_id: int):
+    settings = await get_referral_settings(reseller_id)
+    channels = await get_forced_channels(reseller_id)
+    channels_text = "، ".join(c["channel_id"] for c in channels) if channels else "تنظیم نشده"
+    await callback.message.edit_text(
+        f"⚙️ تنظیمات\n\n"
+        f"رفرال: {'فعال' if settings['is_enabled'] else 'غیرفعال'} ({settings['profit_percent']}٪)\n"
+        f"کانال‌های جوین اجباری: {channels_text}",
+        reply_markup=settings_submenu(settings["is_enabled"]),
     )
-    await message.answer(f"کد تخفیف {code.upper()} با {percent_d}٪ تخفیف ثبت شد ✅")
+    await callback.answer()
 
 
-# ---------- رفرال ----------
-@router.message(Command("referral_on"))
-async def referral_on(message: Message, reseller_id: int):
-    await set_referral_enabled(reseller_id, True)
-    await message.answer("رفرال فعال شد ✅. برای تنظیم درصد سود: /referral_percent <عدد>")
+@router.callback_query(F.data.startswith("settings:referral_set:"))
+async def toggle_referral(callback: CallbackQuery, reseller_id: int):
+    enable = callback.data.split(":")[2] == "on"
+    await set_referral_enabled(reseller_id, enable)
+    settings = await get_referral_settings(reseller_id)
+    await callback.message.edit_text(
+        f"رفرال {'فعال شد ✅' if enable else 'غیرفعال شد'}",
+        reply_markup=settings_submenu(settings["is_enabled"]),
+    )
+    await callback.answer()
 
 
-@router.message(Command("referral_off"))
-async def referral_off(message: Message, reseller_id: int):
-    await set_referral_enabled(reseller_id, False)
-    await message.answer("رفرال غیرفعال شد.")
+@router.callback_query(F.data == "settings:referral_percent")
+async def start_referral_percent(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ResellerSettingsStates.entering_referral_percent)
+    await callback.message.answer("درصد سود رفرال را وارد کنید (مثال: 5):\n(برای انصراف /cancel)")
+    await callback.answer()
 
 
-@router.message(F.text.startswith("/referral_percent "))
-async def referral_percent(message: Message, reseller_id: int):
+@router.message(ResellerSettingsStates.entering_referral_percent)
+async def receive_referral_percent(message: Message, state: FSMContext, reseller_id: int):
     try:
-        percent = Decimal(message.text.split()[1])
-    except (InvalidOperation, IndexError):
-        await message.answer("فرمت درست: /referral_percent 5")
+        percent = Decimal(message.text.strip())
+    except InvalidOperation:
+        await message.answer("فقط عدد وارد کنید.")
         return
     await set_referral_profit_percent(reseller_id, percent)
-    await message.answer(f"درصد سود رفرال روی {percent}٪ تنظیم شد ✅")
+    await message.answer(f"درصد سود رفرال روی {percent}٪ تنظیم شد ✅", reply_markup=back_to_reseller_menu_button())
+    await state.clear()
 
 
-@router.message(Command("referral_status"))
-async def referral_status(message: Message, reseller_id: int):
-    settings = await get_referral_settings(reseller_id)
-    status = "فعال" if settings["is_enabled"] else "غیرفعال"
-    await message.answer(f"وضعیت رفرال: {status}\nدرصد سود: {settings['profit_percent']}٪")
+@router.callback_query(F.data == "settings:add_channel")
+async def start_add_channel(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ResellerSettingsStates.entering_channel_id)
+    await callback.message.answer("آیدی کانال را وارد کنید (مثال: @mychannel):\n(برای انصراف /cancel)")
+    await callback.answer()
 
 
-# ---------- جوین اجباری ----------
-@router.message(F.text.startswith("/add_channel "))
-async def add_channel(message: Message, reseller_id: int):
-    channel_id = message.text.split(maxsplit=1)[1].strip()
+@router.message(ResellerSettingsStates.entering_channel_id)
+async def receive_channel_id(message: Message, state: FSMContext, reseller_id: int):
+    channel_id = message.text.strip()
     await add_forced_channel(reseller_id, channel_id, set_by="reseller")
-    await message.answer(f"کانال {channel_id} به لیست جوین اجباری اضافه شد ✅")
+    await message.answer(f"کانال {channel_id} به لیست جوین اجباری اضافه شد ✅", reply_markup=back_to_reseller_menu_button())
+    await state.clear()
 
 
-@router.message(Command("list_channels"))
-async def list_channels(message: Message, reseller_id: int):
-    channels = await get_forced_channels(reseller_id)
-    if not channels:
-        await message.answer("کانال جوین اجباری تنظیم نشده.")
-        return
-    await message.answer("\n".join(f"- {c['channel_id']}" for c in channels))
+# ---------- کد تخفیف (سه مرحله) ----------
+@router.callback_query(F.data == "settings:add_discount")
+async def start_add_discount(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ResellerSettingsStates.entering_discount_code)
+    await callback.message.answer("کد تخفیف را وارد کنید (مثال: EID10):\n(برای انصراف /cancel)")
+    await callback.answer()
 
 
-# ---------- درخواست فیچر شارژ/VPN ----------
-@router.message(Command("request_recharge"))
-async def request_recharge_feature(message: Message, reseller_id: int):
-    await request_feature(reseller_id, "recharge")
-    await message.answer("درخواست فعال‌سازی فروش شارژ برای مدیر کل ارسال شد؛ منتظر تأیید باشید.")
+@router.message(ResellerSettingsStates.entering_discount_code)
+async def receive_discount_code(message: Message, state: FSMContext):
+    await state.update_data(code=message.text.strip().upper())
+    await state.set_state(ResellerSettingsStates.entering_discount_percent)
+    await message.answer("درصد تخفیف را وارد کنید:")
 
 
-@router.message(Command("request_vpn"))
-async def request_vpn_feature(message: Message, reseller_id: int):
-    await request_feature(reseller_id, "vpn")
-    await message.answer("درخواست فعال‌سازی فروش VPN برای مدیر کل ارسال شد؛ منتظر تأیید باشید.")
-
-
-# ---------- شارژ کیف‌پول: زرین‌پال ----------
-# ---------- شارژ کیف‌پول کمیسیون (نزد پلتفرم) با زرین‌پال ----------
-# توجه: این برای شارژ اعتبار کمیسیون خود نماینده نزد پلتفرم است، نه دریافت وجه
-# از مشتری. برای دریافت وجه بسته از مشتری به handlers/reseller/payment_methods.py
-# مراجعه کن («روش دریافت وجه از مشتری»).
-@router.message(F.text.startswith("/topup_zarinpal "))
-async def topup_zarinpal(message: Message, reseller_id: int):
+@router.message(ResellerSettingsStates.entering_discount_percent)
+async def receive_discount_percent(message: Message, state: FSMContext):
     try:
-        amount = int(message.text.split()[1])
-    except (IndexError, ValueError):
-        await message.answer("فرمت درست: /topup_zarinpal 100000")
-        return
-    try:
-        link, authority = await create_payment_request(
-            PLATFORM_ZARINPAL_MERCHANT_ID,
-            amount,
-            f"شارژ کیف‌پول نماینده {reseller_id}",
-            callback_url="https://example.com/zarinpal/callback",
-        )
-    except Exception as e:
-        await message.answer(f"خطا در اتصال به زرین‌پال: {e}")
-        return
-    await message.answer(f"برای پرداخت {amount:,.0f} تومان روی لینک زیر بزنید:\n{link}")
-
-
-# ---------- شارژ کیف‌پول: رمزارز ----------
-@router.message(Command("topup_crypto"))
-async def topup_crypto_options(message: Message):
-    options = await list_crypto_options()
-    if not options:
-        await message.answer("در حال حاضر روش شارژ رمزارزی توسط مدیر کل تنظیم نشده.")
-        return
-    lines = [
-        f"{o['coin_name']} ({o['network']}) -> آدرس: {o['address']} | نرخ: {o['price']:,.0f} تومان"
-        for o in options
-    ]
-    lines.append(
-        "\nبعد از واریز، هش تراکنش را با فرمت زیر ارسال کنید:\n"
-        "/confirm_crypto <coin_name> <tx_hash> <مبلغ_تخمینی_تومان>"
-    )
-    await message.answer("\n".join(lines))
-
-
-@router.message(F.text.startswith("/confirm_crypto "))
-async def confirm_crypto(message: Message, reseller_id: int):
-    parts = message.text.split()
-    if len(parts) != 4:
-        await message.answer("فرمت درست: /confirm_crypto USDT 0xabc... 500000")
-        return
-    _, coin_name, tx_hash, amount = parts
-    try:
-        amount_d = Decimal(amount)
+        percent = Decimal(message.text.strip())
     except InvalidOperation:
-        await message.answer("مبلغ باید عدد باشد.")
+        await message.answer("فقط عدد وارد کنید.")
         return
-    await request_crypto_topup(reseller_id, coin_name, tx_hash, amount_d)
-    await message.answer("درخواست شارژ رمزارزی ثبت شد و برای تأیید مدیر کل ارسال شد.")
+    await state.update_data(percent=str(percent))
+    await state.set_state(ResellerSettingsStates.entering_discount_usage_limit)
+    await message.answer("سقف تعداد استفاده از این کد را وارد کنید:")
+
+
+@router.message(ResellerSettingsStates.entering_discount_usage_limit)
+async def receive_discount_usage_limit_and_save(message: Message, state: FSMContext, reseller_id: int):
+    try:
+        usage_limit = int(message.text.strip())
+    except ValueError:
+        await message.answer("فقط عدد وارد کنید.")
+        return
+    data = await state.get_data()
+    await execute(
+        "INSERT INTO discount_codes (reseller_id, code, percent, usage_limit) VALUES (%s, %s, %s, %s)",
+        (reseller_id, data["code"], data["percent"], usage_limit),
+    )
+    await message.answer(f"کد تخفیف {data['code']} با {data['percent']}٪ تخفیف ثبت شد ✅", reply_markup=back_to_reseller_menu_button())
+    await state.clear()
+
+
+# ---------- درخواست فیچر ----------
+@router.callback_query(F.data == "settings:request_recharge")
+async def request_recharge_feature_cb(callback: CallbackQuery, reseller_id: int):
+    await request_feature(reseller_id, "recharge")
+    await callback.message.answer("درخواست فعال‌سازی فروش شارژ برای مدیر کل ارسال شد؛ منتظر تأیید باشید.", reply_markup=back_to_reseller_menu_button())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "settings:request_vpn")
+async def request_vpn_feature_cb(callback: CallbackQuery, reseller_id: int):
+    await request_feature(reseller_id, "vpn")
+    await callback.message.answer("درخواست فعال‌سازی فروش VPN برای مدیر کل ارسال شد؛ منتظر تأیید باشید.", reply_markup=back_to_reseller_menu_button())
+    await callback.answer()

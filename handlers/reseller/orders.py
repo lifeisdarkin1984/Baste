@@ -5,11 +5,11 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
-from database.db import fetch_one
+from database.db import fetch_one, fetch_all
 from services.order_service import confirm_order, reject_order, activate_order
 from services.dispute_service import create_dispute
 from utils.states import ResellerDisputeStates
-from utils.keyboards import activate_order_button, dispute_button
+from utils.keyboards import activate_order_button, dispute_button, order_review_buttons, orders_refresh_button
 from core.permissions_middleware import OrderActionPermissionMiddleware
 
 router = Router(name="reseller_orders")
@@ -17,6 +17,26 @@ router = Router(name="reseller_orders")
 # فقط صاحب نماینده یا اپراتور فعال او مجاز به تأیید/رد/فعال‌سازی/استرداد هستند
 # (بخش ۷ اسپک - اپراتور بدون دسترسی مالی/تنظیمات، ولی مجاز به این اکشن‌ها).
 router.callback_query.middleware(OrderActionPermissionMiddleware())
+
+
+@router.callback_query(F.data == "rmenu:orders")
+async def list_pending_orders_cb(callback: CallbackQuery, reseller_id: int):
+    rows = await fetch_all(
+        "SELECT id, order_code, package_price, commission_amount FROM orders "
+        "WHERE reseller_id = %s AND status = 'awaiting_receipt_review'",
+        (reseller_id,),
+    )
+    if not rows:
+        await callback.message.answer("سفارش در انتظار بررسی‌ای وجود ندارد.", reply_markup=orders_refresh_button())
+        await callback.answer()
+        return
+    for r in rows:
+        await callback.message.answer(
+            f"سفارش {r['order_code']} | قیمت بسته: {r['package_price']:,.0f} | "
+            f"کمیسیون: {r['commission_amount']:,.0f}",
+            reply_markup=order_review_buttons(r["id"]),
+        )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("approve_receipt:"))
