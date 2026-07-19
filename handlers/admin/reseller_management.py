@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import default_state
 
 from core.encryption import encrypt_token
 from database.db import execute, fetch_all
@@ -21,34 +22,49 @@ async def admin_start(message: Message):
         "📋 مدیریت نماینده‌ها:\n"
         "/add_reseller — افزودن نماینده جدید\n"
         "/list_resellers — لیست نماینده‌ها\n"
-        "/suspend <id> — تعلیق نماینده\n"
-        "/activate_reseller <id> — فعال‌سازی نماینده\n\n"
+        "/suspend [id] — تعلیق نماینده\n"
+        "/activate_reseller [id] — فعال‌سازی نماینده\n\n"
         "💰 کیف‌پول و استرداد:\n"
         "/pending_topups — شارژهای در انتظار تأیید\n"
-        "/confirm_topup <id> — تأیید شارژ\n"
+        "/confirm_topup [id] — تأیید شارژ\n"
         "/pending_disputes — درخواست‌های استرداد در انتظار\n"
-        "/approve_dispute <id> — تأیید استرداد\n"
-        "/reject_dispute <id> — رد استرداد\n\n"
+        "/approve_dispute [id] — تأیید استرداد\n"
+        "/reject_dispute [id] — رد استرداد\n\n"
         "⚙️ فیچرها و تنظیمات:\n"
         "/pending_features — درخواست‌های فیچر شارژ/VPN\n"
-        "/approve_feature <id> / /reject_feature <id>\n"
+        "/approve_feature [id] / /reject_feature [id]\n"
         "/set_crypto COIN ADDR NET PRICE\n"
         "/blacklist — لیست سیاه\n"
-        "/blacklist_add <id> دلیل\n"
+        "/blacklist_add [id] دلیل\n"
         "/broadcast متن — اطلاعیه همگانی\n"
         "/bills_on / /bills_off\n\n"
         "📊 گزارش:\n"
         "/platform_report — گزارش سود واقعی کل پلتفرم\n\n"
         "🗄 بک‌آپ:\n"
-        "/backup / /restore"
+        "/backup / /restore\n\n"
+        "اگر وسط یک فرآیند گیر کردید، /cancel را بزنید."
     )
+
+
+@router.message(F.text == "/cancel")
+async def cancel_any_state(message: Message, state: FSMContext):
+    """راه فرار از هر حالت FSM گیرکرده (بخش ۷) — بدون این، اگر کاربر وسط
+    /add_reseller چیز نامعتبری بفرستد یا نخواهد ادامه دهد، هر پیام بعدی‌اش
+    (حتی /start) توسط هندلر همان مرحله گرفته می‌شود."""
+    current = await state.get_state()
+    if current is None:
+        await message.answer("در حال حاضر در هیچ فرآیندی نیستید.")
+        return
+    await state.clear()
+    await message.answer("فرآیند لغو شد. می‌توانید دوباره شروع کنید.")
 
 
 @router.message(F.text == "/add_reseller")
 async def start_add_reseller(message: Message, state: FSMContext):
     await state.set_state(SuperAdminResellerStates.entering_bot_token)
     await message.answer(
-        "توکن رباتی که نماینده از BotFather گرفته و به شما داده را ارسال کنید:"
+        "توکن رباتی که نماینده از BotFather گرفته و به شما داده را ارسال کنید:\n"
+        "(برای انصراف /cancel را بزنید)"
     )
 
 
@@ -62,7 +78,7 @@ async def receive_bot_token(message: Message, state: FSMContext):
 @router.message(SuperAdminResellerStates.entering_telegram_id)
 async def receive_telegram_id(message: Message, state: FSMContext):
     if not message.text.strip().lstrip("-").isdigit():
-        await message.answer("آیدی عددی معتبر نیست، دوباره وارد کنید:")
+        await message.answer("آیدی عددی معتبر نیست، دوباره وارد کنید:\n(برای انصراف /cancel)")
         return
     await state.update_data(telegram_numeric_id=int(message.text.strip()))
     await state.set_state(SuperAdminResellerStates.entering_commission_percent)
