@@ -1,4 +1,5 @@
 from aiogram import Dispatcher
+from handlers.reseller.start import router as start_router
 from handlers.reseller.orders import router as orders_router
 from handlers.reseller.catalog import router as catalog_router
 from handlers.reseller.wallet import router as wallet_router
@@ -10,6 +11,7 @@ from handlers.reseller.payment_methods import router as payment_methods_router
 
 
 def register_reseller_handlers(dp: Dispatcher) -> None:
+    dp.include_router(start_router)
     dp.include_router(orders_router)
     dp.include_router(catalog_router)
     dp.include_router(wallet_router)
