@@ -164,3 +164,131 @@ def restore_confirm_buttons() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="❌ لغو", callback_data="restore_cancel", style="primary"),
         ],
     ])
+
+
+# ==========================================================================
+# فاز ۳ — منوهای پنل نماینده (بخش ۵ و ۷ اسپک)
+# ==========================================================================
+
+def reseller_main_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📦 کاتالوگ", callback_data="rmenu:catalog", style="primary"),
+            InlineKeyboardButton(text="🧾 سفارش‌ها", callback_data="rmenu:orders", style="primary"),
+        ],
+        [
+            InlineKeyboardButton(text="💰 کیف‌پول کمیسیون", callback_data="rmenu:wallet", style="primary"),
+            InlineKeyboardButton(text="💳 روش دریافت وجه", callback_data="rmenu:payment_methods", style="primary"),
+        ],
+        [
+            InlineKeyboardButton(text="⚙️ تنظیمات", callback_data="rmenu:settings", style="primary"),
+            InlineKeyboardButton(text="📊 گزارش فروش", callback_data="rmenu:reports", style="primary"),
+        ],
+        [
+            InlineKeyboardButton(text="👥 آمار مشتریان", callback_data="rmenu:stats", style="primary"),
+            InlineKeyboardButton(text="🧾 قبوض", callback_data="rmenu:bills", style="primary"),
+        ],
+    ])
+
+
+def back_to_reseller_menu_button() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ بازگشت به منوی اصلی", callback_data="rmenu:home", style="primary")],
+    ])
+
+
+# ---------- کاتالوگ ----------
+def catalog_submenu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 مشاهده کاتالوگ", callback_data="catalog:view", style="primary")],
+        [InlineKeyboardButton(text="➕ افزودن دسته‌بندی", callback_data="catalog:add_category", style="success")],
+        [InlineKeyboardButton(text="➕ افزودن بسته", callback_data="catalog:add_package", style="success")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
+    ])
+
+
+def category_pick_buttons(categories: list) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"{c['operator_name']} - {c['title']}", callback_data=f"catalog:pick_category:{c['id']}", style="primary")]
+        for c in categories
+    ]
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:catalog", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ---------- سفارش‌ها ----------
+def orders_refresh_button() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 بروزرسانی لیست", callback_data="rmenu:orders", style="primary")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
+    ])
+
+
+# ---------- کیف‌پول کمیسیون ----------
+def wallet_submenu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 افزایش با کارت‌به‌کارت", callback_data="wallet:topup_card", style="success")],
+        [InlineKeyboardButton(text="🌐 افزایش با زرین‌پال", callback_data="wallet:topup_zarinpal", style="success")],
+        [InlineKeyboardButton(text="💎 افزایش با رمزارز", callback_data="wallet:topup_crypto", style="success")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
+    ])
+
+
+# ---------- روش دریافت وجه (کارت‌های خود نماینده) ----------
+def payment_methods_submenu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 کارت‌های من", callback_data="pm:list_cards", style="primary")],
+        [InlineKeyboardButton(text="➕ افزودن کارت", callback_data="pm:add_card", style="success")],
+        [InlineKeyboardButton(text="🌐 تنظیم زرین‌پال شخصی", callback_data="pm:set_zarinpal", style="primary")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
+    ])
+
+
+def card_row_buttons(card_id: int, is_active: bool) -> InlineKeyboardMarkup:
+    toggle = InlineKeyboardButton(
+        text=("⛔️ غیرفعال کردن" if is_active else "✅ فعال کردن"),
+        callback_data=f"pm:toggle_card:{card_id}", style=("danger" if is_active else "success"),
+    )
+    remove = InlineKeyboardButton(text="🗑 حذف", callback_data=f"pm:remove_card:{card_id}", style="danger")
+    return InlineKeyboardMarkup(inline_keyboard=[[toggle, remove]])
+
+
+# ---------- تنظیمات ----------
+def settings_submenu(referral_enabled: bool) -> InlineKeyboardMarkup:
+    referral_toggle = InlineKeyboardButton(
+        text=("🔴 غیرفعال کردن رفرال" if referral_enabled else "🟢 فعال کردن رفرال"),
+        callback_data=f"settings:referral_set:{'off' if referral_enabled else 'on'}", style="primary",
+    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [referral_toggle],
+        [InlineKeyboardButton(text="🔢 تنظیم درصد سود رفرال", callback_data="settings:referral_percent", style="primary")],
+        [InlineKeyboardButton(text="📢 افزودن کانال جوین اجباری", callback_data="settings:add_channel", style="primary")],
+        [InlineKeyboardButton(text="🏷 افزودن کد تخفیف", callback_data="settings:add_discount", style="success")],
+        [InlineKeyboardButton(text="📶 درخواست فروش شارژ", callback_data="settings:request_recharge", style="primary")],
+        [InlineKeyboardButton(text="🔒 درخواست فروش VPN", callback_data="settings:request_vpn", style="primary")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
+    ])
+
+
+# ---------- گزارش‌ها ----------
+def reports_submenu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📄 خروجی اکسل ۳۰ روز اخیر", callback_data="reports:excel", style="primary")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
+    ])
+
+
+# ---------- قبوض ----------
+def bill_decision_buttons(bill_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ تأیید", callback_data=f"bill_confirm:{bill_id}", style="success"),
+            InlineKeyboardButton(text="❌ رد", callback_data=f"bill_reject:{bill_id}", style="danger"),
+        ],
+    ])
+
+
+def bill_mark_paid_button(bill_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💸 پرداخت شد", callback_data=f"bill_paid:{bill_id}", style="success")],
+    ])
