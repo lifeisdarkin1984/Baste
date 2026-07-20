@@ -248,3 +248,28 @@ CREATE TABLE IF NOT EXISTS global_settings (
 ) ENGINE=InnoDB;
 
 INSERT IGNORE INTO global_settings (setting_key, setting_value) VALUES ('bills_payment_enabled', 'false');
+
+-- ==========================================================================
+-- کیف‌پول مشتری (نصب تازه؛ برای دیتابیس موجود از migration_customer_wallet.sql استفاده کنید)
+-- ==========================================================================
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS wallet_balance DECIMAL(14,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_from_wallet BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS customer_wallet_topups (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    reseller_id   INT NOT NULL,
+    customer_id   INT NOT NULL,
+    amount        DECIMAL(14,2) NOT NULL,
+    method        ENUM('card', 'zarinpal') NOT NULL,
+    receipt_image VARCHAR(255) NULL,
+    status        ENUM(
+                      'pending',
+                      'confirmed',
+                      'confirmed_insufficient_credit',
+                      'rejected'
+                  ) NOT NULL DEFAULT 'pending',
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    confirmed_at  DATETIME NULL,
+    FOREIGN KEY (reseller_id) REFERENCES resellers(id) ON DELETE CASCADE,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
