@@ -64,4 +64,12 @@ async def get_zarinpal_merchant(reseller_id: int) -> str | None:
 
 
 def format_card_number(card_number: str) -> str:
-    return " ".join(card_number[i:i + 4] for i in range(0, len(card_number), 4))
+    """
+    خروجی برای نمایش تو پیام‌های فارسی (RTL):
+      - داخل <code> می‌ذاریمش تا تلگرام رو عدد لمس‌کردنی/کپی‌شونده نشونش بده
+        (چون ParseMode.HTML سراسریه).
+      - یه \u200e (LRM) اول رشته می‌ذاریم تا تلگرام گروه‌های ۴رقمی رو، وسط
+        متن فارسیِ راست‌به‌چپ، برعکس (از راست به چپ) نچینه.
+    """
+    grouped = " ".join(card_number[i:i + 4] for i in range(0, len(card_number), 4))
+    return f"<code>\u200e{grouped}</code>"
