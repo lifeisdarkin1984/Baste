@@ -25,12 +25,15 @@ CUSTOMER_TOPUP_BUTTON_TEXT = "💳 افزایش موجودی"
 CUSTOMER_TOPUP_CARD_BUTTON_TEXT = "💳 کارت‌به‌کارت"
 CUSTOMER_TOPUP_ZARINPAL_BUTTON_TEXT = "🌐 زرین‌پال"
 CUSTOMER_BUY_BUTTON_TEXT = "🛒 خرید این بسته"
+CUSTOMER_CHARGE_BUTTON_TEXT = "🔋 خرید شارژ سطح"
+CUSTOMER_BUY_CHARGE_BUTTON_TEXT = "🔋 خرید این شارژ"
 
 
 def customer_main_reply_keyboard(has_support_contact: bool = True) -> ReplyKeyboardMarkup:
     """کیبورد ثابت پایین صفحه‌ی مشتری. resize_keyboard کوچیکش می‌کنه که کل صفحه رو نگیره."""
     rows = [
         [KeyboardButton(text=CUSTOMER_CATALOG_BUTTON_TEXT)],
+        [KeyboardButton(text=CUSTOMER_CHARGE_BUTTON_TEXT)],
         [KeyboardButton(text=CUSTOMER_WALLET_BUTTON_TEXT)],
     ]
     if has_support_contact:
@@ -50,6 +53,18 @@ def customer_package_detail_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=CUSTOMER_BUY_BUTTON_TEXT)],
+            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def customer_charge_detail_keyboard() -> ReplyKeyboardMarkup:
+    """کیبورد پایین صفحه بعد از انتخاب یک شارژ سطح مشخص: دکمه‌ی متنی «خرید» + بازگشت."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=CUSTOMER_BUY_CHARGE_BUTTON_TEXT)],
             [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)],
         ],
         resize_keyboard=True,
@@ -221,21 +236,10 @@ def dispute_decision_buttons(dispute_id: int) -> InlineKeyboardMarkup:
 
 def admin_features_submenu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🧩 درخواست‌های فیچر شارژ/VPN", callback_data="amenu:features:pending", style="primary")],
         [InlineKeyboardButton(text="💎 تنظیم رمزارز", callback_data="amenu:features:crypto", style="primary")],
         [InlineKeyboardButton(text="🚫 لیست سیاه", callback_data="amenu:features:blacklist", style="primary")],
         [InlineKeyboardButton(text="📢 ارسال اطلاعیه همگانی", callback_data="amenu:features:broadcast", style="primary")],
-        [InlineKeyboardButton(text="🧾 پرداخت قبوض", callback_data="amenu:features:bills", style="primary")],
         [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="amenu:home", style="primary")],
-    ])
-
-
-def feature_decision_buttons(flag_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ تأیید", callback_data=f"feature_approve:{flag_id}", style="success"),
-            InlineKeyboardButton(text="❌ رد", callback_data=f"feature_reject:{flag_id}", style="danger"),
-        ],
     ])
 
 
@@ -243,14 +247,6 @@ def blacklist_add_button() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ افزودن به لیست سیاه", callback_data="blacklist_add_start", style="danger")],
     ])
-
-
-def bills_toggle_buttons(currently_enabled: bool) -> InlineKeyboardMarkup:
-    if currently_enabled:
-        btn = InlineKeyboardButton(text="🔴 غیرفعال‌سازی پرداخت قبوض", callback_data="bills_set:off", style="danger")
-    else:
-        btn = InlineKeyboardButton(text="🟢 فعال‌سازی پرداخت قبوض", callback_data="bills_set:on", style="success")
-    return InlineKeyboardMarkup(inline_keyboard=[[btn]])
 
 
 def admin_backup_submenu() -> InlineKeyboardMarkup:
@@ -290,7 +286,7 @@ def reseller_main_menu() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(text="👥 آمار مشتریان", callback_data="rmenu:stats", style="primary"),
-            InlineKeyboardButton(text="🧾 قبوض", callback_data="rmenu:bills", style="primary"),
+            InlineKeyboardButton(text="🎫 مدیریت شارژ", callback_data="rmenu:charge_stock", style="primary"),
         ],
     ])
 
@@ -301,35 +297,45 @@ def back_to_reseller_menu_button() -> InlineKeyboardMarkup:
     ])
 
 
-# ---------- کاتالوگ (ساختار پوشه‌ای: اپراتور -> زیرپوشه (ماهانه/هفتگی/...) -> بسته) ----------
-def catalog_submenu() -> InlineKeyboardMarkup:
+# ---------- کاتالوگ (دو بخش: بسته‌ی اینترنتی / شارژ، هرکدام پوشه‌ای دو سطحی) ----------
+def catalog_type_menu() -> InlineKeyboardMarkup:
+    """انتخاب اینکه کدوم کاتالوگ رو مدیریت می‌کنیم: بسته‌های اینترنتی یا شارژ."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 مشاهده کاتالوگ", callback_data="catalog:view", style="primary")],
-        [InlineKeyboardButton(text="📁 افزودن اپراتور (پوشه اصلی)", callback_data="catalog:add_operator", style="success")],
-        [InlineKeyboardButton(text="📂 افزودن زیرپوشه (ماهانه/هفتگی/...)", callback_data="catalog:add_subcategory", style="success")],
-        [InlineKeyboardButton(text="➕ افزودن بسته", callback_data="catalog:add_package", style="success")],
+        [InlineKeyboardButton(text="📦 بسته‌های اینترنتی", callback_data="catalog:menu:package", style="primary")],
+        [InlineKeyboardButton(text="🔋 شارژ", callback_data="catalog:menu:charge", style="primary")],
         [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
     ])
 
 
-def operator_pick_buttons(operators: list, purpose: str) -> InlineKeyboardMarkup:
-    """purpose: 'sub' برای انتخاب اپراتور موقع ساخت زیرپوشه، 'pkg' برای انتخاب اپراتور موقع افزودن بسته."""
+def catalog_submenu(catalog_type: str = "package") -> InlineKeyboardMarkup:
+    add_item_text = "➕ افزودن بسته" if catalog_type == "package" else "➕ افزودن محصول شارژ"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 مشاهده کاتالوگ", callback_data=f"catalog:view:{catalog_type}", style="primary")],
+        [InlineKeyboardButton(text="📁 افزودن اپراتور (پوشه اصلی)", callback_data=f"catalog:add_operator:{catalog_type}", style="success")],
+        [InlineKeyboardButton(text="📂 افزودن زیرپوشه (ماهانه/هفتگی/...)", callback_data=f"catalog:add_subcategory:{catalog_type}", style="success")],
+        [InlineKeyboardButton(text=add_item_text, callback_data=f"catalog:add_package:{catalog_type}", style="success")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:catalog", style="primary")],
+    ])
+
+
+def operator_pick_buttons(operators: list, purpose: str, catalog_type: str = "package") -> InlineKeyboardMarkup:
+    """purpose: 'sub' برای انتخاب اپراتور موقع ساخت زیرپوشه، 'pkg' برای انتخاب اپراتور موقع افزودن بسته/محصول."""
     prefix = "catalog:pick_operator_for_sub" if purpose == "sub" else "catalog:pick_operator_for_pkg"
     rows = [
-        [InlineKeyboardButton(text=f"📁 {op['operator_name']}", callback_data=f"{prefix}:{op['id']}", style="primary")]
+        [InlineKeyboardButton(text=f"📁 {op['operator_name']}", callback_data=f"{prefix}:{catalog_type}:{op['id']}", style="primary")]
         for op in operators
     ]
-    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:catalog", style="primary")])
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:menu:{catalog_type}", style="primary")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def category_pick_buttons(categories: list) -> InlineKeyboardMarkup:
-    """انتخاب زیرپوشه (مثلاً ماهانه/هفتگی) برای افزودن بسته داخلش."""
+def category_pick_buttons(categories: list, catalog_type: str = "package") -> InlineKeyboardMarkup:
+    """انتخاب زیرپوشه (مثلاً ماهانه/هفتگی) برای افزودن بسته/محصول داخلش."""
     rows = [
-        [InlineKeyboardButton(text=f"📂 {c['title']}", callback_data=f"catalog:pick_category:{c['id']}", style="primary")]
+        [InlineKeyboardButton(text=f"📂 {c['title']}", callback_data=f"catalog:pick_category:{catalog_type}:{c['id']}", style="primary")]
         for c in categories
     ]
-    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data="catalog:add_package", style="primary")])
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:add_package:{catalog_type}", style="primary")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -381,8 +387,6 @@ def settings_submenu(referral_enabled: bool) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔢 تنظیم درصد سود رفرال", callback_data="settings:referral_percent", style="primary")],
         [InlineKeyboardButton(text="📢 افزودن کانال جوین اجباری", callback_data="settings:add_channel", style="primary")],
         [InlineKeyboardButton(text="🏷 افزودن کد تخفیف", callback_data="settings:add_discount", style="success")],
-        [InlineKeyboardButton(text="📶 درخواست فروش شارژ", callback_data="settings:request_recharge", style="primary")],
-        [InlineKeyboardButton(text="🔒 درخواست فروش VPN", callback_data="settings:request_vpn", style="primary")],
         [InlineKeyboardButton(text="📞 ثبت آیدی پشتیبانی", callback_data="settings:set_support_contact", style="primary")],
         [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
     ])
@@ -396,17 +400,56 @@ def reports_submenu() -> InlineKeyboardMarkup:
     ])
 
 
-# ---------- قبوض ----------
-def bill_decision_buttons(bill_id: int) -> InlineKeyboardMarkup:
+# ==========================================================================
+# مدیریت موجودی کد شارژ (بخش جدید طبق درخواست): افزودن کد / نمایش موجودی /
+# حذف موجودی / کدهای فروخته‌شده. همه از یک مسیر مشترک انتخاب اپراتور ->
+# زیرپوشه -> محصول شارژ رد می‌شوند (action در callback_data حفظ می‌شود).
+# ==========================================================================
+def charge_stock_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ تأیید", callback_data=f"bill_confirm:{bill_id}", style="success"),
-            InlineKeyboardButton(text="❌ رد", callback_data=f"bill_reject:{bill_id}", style="danger"),
-        ],
+        [InlineKeyboardButton(text="➕ افزودن کد", callback_data="cstock:pick:add", style="success")],
+        [InlineKeyboardButton(text="📋 نمایش کدهای موجود", callback_data="cstock:pick:list", style="primary")],
+        [InlineKeyboardButton(text="🗑 حذف موجودی", callback_data="cstock:pick:remove", style="danger")],
+        [InlineKeyboardButton(text="🧾 کدهای فروخته‌شده", callback_data="cstock:pick:sold", style="primary")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
     ])
 
 
-def bill_mark_paid_button(bill_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💸 پرداخت شد", callback_data=f"bill_paid:{bill_id}", style="success")],
-    ])
+def charge_operator_pick_buttons(operators: list, action: str) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"📁 {op['operator_name']}", callback_data=f"cstock:op:{action}:{op['id']}", style="primary")]
+        for op in operators
+    ]
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:charge_stock", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def charge_category_pick_buttons(categories: list, action: str) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"📂 {c['title']}", callback_data=f"cstock:cat:{action}:{c['id']}", style="primary")]
+        for c in categories
+    ]
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data="cstock:pick:" + action, style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def charge_product_pick_buttons(products: list, action: str) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(
+            text=f"🔋 {p['name']} — {p['sale_price']:,.0f} تومان ({p.get('available_count', 0)} موجود)",
+            callback_data=f"cstock:prod:{action}:{p['id']}", style="primary",
+        )]
+        for p in products
+    ]
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:charge_stock", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def charge_code_remove_buttons(codes: list, package_id: int) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"🗑 {c['code']}", callback_data=f"cstock:delcode:{c['id']}:{package_id}", style="danger")]
+        for c in codes
+    ]
+    rows.append([InlineKeyboardButton(text="🗑 حذف همه‌ی موجودی این محصول", callback_data=f"cstock:clearall:{package_id}", style="danger")])
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:charge_stock", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)

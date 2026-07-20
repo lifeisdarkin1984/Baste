@@ -18,6 +18,11 @@ class ResellerCategoryStates(StatesGroup):
     entering_subcategory_title = State()    # ساخت زیرپوشه داخل اپراتور (مثلاً ماهانه/هفتگی)
 
 
+# ---------- مدیریت موجودی کد شارژ توسط نماینده ----------
+class ResellerChargeCodeStates(StatesGroup):
+    entering_codes = State()   # افزودن کد(های) شارژ، یکی در هر خط، برای یک محصول مشخص
+
+
 class ResellerDisputeStates(StatesGroup):
     entering_reason = State()
 
@@ -58,6 +63,14 @@ class CustomerCatalogStates(StatesGroup):
     browsing_packages = State()       # لیست بسته‌های یک زیرپوشه خاص
     package_selected = State()        # یک بسته انتخاب شده، منتظر تأیید دکمه‌ی «خرید»
     entering_phone_number = State()   # منتظر شماره‌خطی که بسته باید رویش فعال شود
+
+
+# ---------- ناوبری پوشه‌ای «خرید شارژ سطح» برای مشتری (کیبورد پایین صفحه) ----------
+class CustomerChargeStates(StatesGroup):
+    browsing_operators = State()
+    browsing_subcategories = State()
+    browsing_products = State()
+    product_selected = State()
 
 
 # ---------- افزایش موجودی کیف‌پول مشتری ----------
