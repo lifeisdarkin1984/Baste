@@ -72,6 +72,17 @@ def customer_charge_detail_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def customer_charge_quantity_keyboard() -> ReplyKeyboardMarkup:
+    """کیبورد پایین صفحه موقع تایپ تعداد در خرید عمده‌ی شارژ: فقط دکمه‌ی بازگشت (خودِ عدد با کیبورد سیستم تایپ می‌شود)."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
 CUSTOMER_SHARE_PHONE_BUTTON_TEXT = "📱 ارسال شماره تلفنم"
 
 

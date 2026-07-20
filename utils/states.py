@@ -71,6 +71,7 @@ class CustomerChargeStates(StatesGroup):
     browsing_subcategories = State()
     browsing_products = State()
     product_selected = State()
+    entering_quantity = State()   # خرید عمده: منتظر عددِ تعداد کدهای درخواستی از مشتری
 
 
 # ---------- افزایش موجودی کیف‌پول مشتری ----------
