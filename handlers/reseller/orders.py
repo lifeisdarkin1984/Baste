@@ -31,7 +31,7 @@ router.callback_query.middleware(OrderActionPermissionMiddleware())
 @router.callback_query(F.data == "rmenu:orders")
 async def list_pending_orders_cb(callback: CallbackQuery, reseller_id: int):
     rows = await fetch_all(
-        "SELECT id, order_code, package_price, commission_amount FROM orders "
+        "SELECT id, order_code, package_price, commission_amount, phone_number FROM orders "
         "WHERE reseller_id = %s AND status = 'awaiting_receipt_review'",
         (reseller_id,),
     )
@@ -42,7 +42,8 @@ async def list_pending_orders_cb(callback: CallbackQuery, reseller_id: int):
     for r in rows:
         await callback.message.answer(
             f"سفارش {r['order_code']} | قیمت بسته: {r['package_price']:,.0f} | "
-            f"کمیسیون: {r['commission_amount']:,.0f}",
+            f"کمیسیون: {r['commission_amount']:,.0f}\n"
+            f"شماره خط: {r['phone_number'] or 'ثبت نشده'}",
             reply_markup=order_review_buttons(r["id"]),
         )
     await callback.answer()
@@ -52,8 +53,10 @@ async def list_pending_orders_cb(callback: CallbackQuery, reseller_id: int):
 async def approve_receipt(callback: CallbackQuery):
     order_id = int(callback.data.split(":")[1])
     await confirm_order(order_id)
+    order = await fetch_one("SELECT phone_number FROM orders WHERE id = %s", (order_id,))
+    phone_line = f"\nشماره خط: {order['phone_number']}" if order and order["phone_number"] else ""
     await callback.message.answer(
-        "رسید تأیید شد ✅. لطفاً بعد از فعال‌سازی دستی بسته، دکمه‌ی زیر را بزنید.",
+        f"رسید تأیید شد ✅.{phone_line}\nلطفاً بعد از فعال‌سازی دستی بسته، دکمه‌ی زیر را بزنید.",
         reply_markup=activate_order_button(order_id),
     )
     await callback.answer()
