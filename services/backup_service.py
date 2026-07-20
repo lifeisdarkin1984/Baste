@@ -34,10 +34,9 @@ TABLES_IN_DEPENDENCY_ORDER = [
     "forced_join_channels",
     "blacklist",
     "crypto_settings",
-    "feature_flags",
     "broadcasts",
     "global_settings",
-    "bill_payments",
+    "charge_codes",
     "backup_logs",
 ]
 
