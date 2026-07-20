@@ -88,7 +88,7 @@ def _generate_order_code(prefix: str) -> str:
     return f"{prefix}-{now.strftime('%y%m%d')}-{now.strftime('%H%M%S')}{suffix}"
 
 
-async def create_order(reseller_id: int, package_id: int, customer_id: int) -> dict:
+async def create_order(reseller_id: int, package_id: int, customer_id: int, phone_number: str | None = None) -> dict:
     """
     مرحله‌ی ۱-۲ فلو: مشتری بسته را انتخاب می‌کند -> سفارش با وضعیت
     awaiting_payment ساخته می‌شود (هنوز رسیدی آپلود نشده، پس هنوز کمیسیونی
@@ -105,9 +105,9 @@ async def create_order(reseller_id: int, package_id: int, customer_id: int) -> d
 
     order_code = _generate_order_code(reseller["order_prefix"])
     await execute(
-        "INSERT INTO orders (order_code, reseller_id, package_id, customer_id, status, package_price) "
-        "VALUES (%s, %s, %s, %s, 'awaiting_payment', %s)",
-        (order_code, reseller_id, package_id, customer_id, package["sale_price"]),
+        "INSERT INTO orders (order_code, reseller_id, package_id, customer_id, status, package_price, phone_number) "
+        "VALUES (%s, %s, %s, %s, 'awaiting_payment', %s, %s)",
+        (order_code, reseller_id, package_id, customer_id, package["sale_price"], phone_number),
     )
     # order_code خودمون تولیدش کردیم و UNIQUE هم هست، پس واکشی دوباره بر اساسش
     # قطعی‌تر از تکیه به cur.lastrowid روی یک اتصال جدا از pool هست.
@@ -122,7 +122,9 @@ class WalletInsufficientBalanceError(Exception):
     pass
 
 
-async def create_order_paid_by_wallet(reseller_id: int, package_id: int, customer_id: int) -> dict:
+async def create_order_paid_by_wallet(
+    reseller_id: int, package_id: int, customer_id: int, phone_number: str | None = None
+) -> dict:
     """
     خرید بسته با کسر خودکار از کیف‌پول مشتری (services/customer_wallet_service.py).
     چون کمیسیون نماینده همان لحظه‌ی شارژ کیف‌پول کسر شده (نه الان)، این‌جا دیگر
@@ -163,9 +165,9 @@ async def create_order_paid_by_wallet(reseller_id: int, package_id: int, custome
         )
         await cur.execute(
             "INSERT INTO orders (order_code, reseller_id, package_id, customer_id, status, "
-            "package_price, commission_amount, is_test_order, paid_from_wallet, confirmed_at) "
-            "VALUES (%s, %s, %s, %s, 'confirmed', %s, 0.00, FALSE, TRUE, NOW())",
-            (order_code, reseller_id, package_id, customer_id, price),
+            "package_price, commission_amount, is_test_order, paid_from_wallet, confirmed_at, phone_number) "
+            "VALUES (%s, %s, %s, %s, 'confirmed', %s, 0.00, FALSE, TRUE, NOW(), %s)",
+            (order_code, reseller_id, package_id, customer_id, price, phone_number),
         )
 
     # order_code خودمون تولیدش کردیم و UNIQUE هم هست، پس واکشی دوباره بر اساسش
