@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS orders (
                           'failed_insufficient_credit' -- کسر کمیسیون به‌خاطر کمبود اعتبار نماینده ناموفق بود
                       ) NOT NULL DEFAULT 'awaiting_payment',
     receipt_image     VARCHAR(255) NULL,        -- فقط اطلاعاتی، بدون اثر مالی
+    phone_number      VARCHAR(20) NULL,         -- شماره خطی که باید بسته رویش فعال شود
     package_price     DECIMAL(14,2) NOT NULL,   -- کپی از قیمت بسته در لحظه ثبت
     commission_amount DECIMAL(14,2) NOT NULL DEFAULT 0.00,
     is_test_order     BOOLEAN NOT NULL DEFAULT FALSE,
