@@ -8,6 +8,15 @@ from aiogram.fsm.context import FSMContext
 from database.db import fetch_one, fetch_all
 from services.order_service import confirm_order, reject_order, activate_order
 from services.dispute_service import create_dispute
+from services.customer_wallet_service import (
+    confirm_topup,
+    reject_topup,
+    WalletTopupInsufficientCreditError,
+)
+from services.notifications import (
+    notify_reseller_wallet_topup_insufficient_credit,
+    notify_super_admin_wallet_topup_insufficient_credit,
+)
 from utils.states import ResellerDisputeStates
 from utils.keyboards import activate_order_button, dispute_button, order_review_buttons, orders_refresh_button
 from core.permissions_middleware import OrderActionPermissionMiddleware
@@ -86,6 +95,34 @@ async def activate(callback: CallbackQuery):
             pass  # مثلاً مشتری ربات را بلاک کرده؛ فعال‌سازی سفارش متوقف نمی‌شود
 
     await callback.message.answer(f"سفارش {order['order_code']} فعال شد و پیام پایان برای مشتری ارسال شد ✅")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("wallet_topup_confirm:"))
+async def confirm_wallet_topup(callback: CallbackQuery):
+    topup_id = int(callback.data.split(":")[1])
+    try:
+        await confirm_topup(topup_id)
+    except ValueError as e:
+        await callback.answer(str(e), show_alert=True)
+        return
+    except WalletTopupInsufficientCreditError as e:
+        await notify_reseller_wallet_topup_insufficient_credit(callback.bot, e.reseller_id, e.topup_id)
+        await notify_super_admin_wallet_topup_insufficient_credit(e.reseller_id, e.topup_id)
+        await callback.message.answer(
+            "کیف‌پول مشتری شارژ شد ✅ ولی کسر کمیسیون شما به‌خاطر کمبود اعتبار ناموفق بود؛ لطفاً کیف‌پول کمیسیون خود را شارژ کنید."
+        )
+        await callback.answer()
+        return
+    await callback.message.answer("افزایش موجودی کیف‌پول مشتری تأیید و اعمال شد ✅")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("wallet_topup_reject:"))
+async def reject_wallet_topup(callback: CallbackQuery):
+    topup_id = int(callback.data.split(":")[1])
+    await reject_topup(topup_id)
+    await callback.message.answer("درخواست افزایش موجودی رد شد ❌")
     await callback.answer()
 
 

@@ -133,3 +133,22 @@ async def request_vpn_feature_cb(callback: CallbackQuery, reseller_id: int):
     await request_feature(reseller_id, "vpn")
     await callback.message.answer("درخواست فعال‌سازی فروش VPN برای مدیر کل ارسال شد؛ منتظر تأیید باشید.", reply_markup=back_to_reseller_menu_button())
     await callback.answer()
+
+
+# ---------- آیدی پشتیبانی ----------
+@router.callback_query(F.data == "settings:set_support_contact")
+async def start_set_support_contact(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ResellerSettingsStates.entering_support_contact)
+    await callback.message.answer(
+        "آیدی/شماره پشتیبانی را وارد کنید (مثال: @my_support یا 09120000000):\n"
+        "این دقیقاً همانی است که با دکمه‌ی «پشتیبانی» به مشتری نشان داده می‌شود.\n(برای انصراف /cancel)"
+    )
+    await callback.answer()
+
+
+@router.message(ResellerSettingsStates.entering_support_contact)
+async def receive_support_contact(message: Message, state: FSMContext, reseller_id: int):
+    contact = message.text.strip()
+    await execute("UPDATE resellers SET support_contact = %s WHERE id = %s", (contact, reseller_id))
+    await message.answer(f"آیدی پشتیبانی روی «{contact}» تنظیم شد ✅", reply_markup=back_to_reseller_menu_button())
+    await state.clear()
