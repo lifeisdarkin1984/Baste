@@ -106,6 +106,61 @@ async def create_order(reseller_id: int, package_id: int, customer_id: int) -> d
     return await fetch_one("SELECT * FROM orders WHERE id = %s", (order_id,))
 
 
+class WalletInsufficientBalanceError(Exception):
+    """موجودی کیف‌پول مشتری برای خرید خودکار این بسته کافی نیست."""
+    pass
+
+
+async def create_order_paid_by_wallet(reseller_id: int, package_id: int, customer_id: int) -> dict:
+    """
+    خرید بسته با کسر خودکار از کیف‌پول مشتری (services/customer_wallet_service.py).
+    چون کمیسیون نماینده همان لحظه‌ی شارژ کیف‌پول کسر شده (نه الان)، این‌جا دیگر
+    نیازی به کسر کمیسیون یا رسید/تأیید نماینده نیست؛ سفارش مستقیم با وضعیت
+    'confirmed' ثبت می‌شود و فقط منتظر فعال‌سازی دستی نماینده می‌ماند (مرحله ۵).
+    اگر موجودی کافی نبود WalletInsufficientBalanceError بالا می‌رود تا هندلر
+    برگردد به فلوی عادی رسید.
+    """
+    customer_row = await fetch_one(
+        "SELECT telegram_user_id, wallet_balance FROM customers WHERE id = %s", (customer_id,)
+    )
+    if customer_row and await is_blacklisted(customer_row["telegram_user_id"], reseller_id):
+        raise CustomerBlacklistedError("این مشتری در لیست سیاه است و امکان ثبت سفارش ندارد.")
+
+    reseller = await fetch_one("SELECT order_prefix FROM resellers WHERE id = %s", (reseller_id,))
+    package = await fetch_one("SELECT sale_price FROM packages WHERE id = %s", (package_id,))
+    if package is None:
+        raise ValueError("بسته پیدا نشد.")
+
+    price = Decimal(package["sale_price"])
+    if Decimal(customer_row["wallet_balance"]) < price:
+        raise WalletInsufficientBalanceError("موجودی کیف‌پول کافی نیست.")
+
+    order_code = _generate_order_code(reseller["order_prefix"])
+    async with transaction() as conn:
+        cur = await conn.cursor()
+        await cur.execute(
+            "SELECT wallet_balance FROM customers WHERE id = %s FOR UPDATE", (customer_id,)
+        )
+        row = await cur.fetchone()
+        current_balance = Decimal(row[0])
+        if current_balance < price:
+            raise WalletInsufficientBalanceError("موجودی کیف‌پول کافی نیست.")
+
+        await cur.execute(
+            "UPDATE customers SET wallet_balance = wallet_balance - %s WHERE id = %s",
+            (price, customer_id),
+        )
+        await cur.execute(
+            "INSERT INTO orders (order_code, reseller_id, package_id, customer_id, status, "
+            "package_price, commission_amount, is_test_order, paid_from_wallet, confirmed_at) "
+            "VALUES (%s, %s, %s, %s, 'confirmed', %s, 0.00, FALSE, TRUE, NOW())",
+            (order_code, reseller_id, package_id, customer_id, price),
+        )
+        order_id = cur.lastrowid
+
+    return await fetch_one("SELECT * FROM orders WHERE id = %s", (order_id,))
+
+
 async def submit_receipt(order_id: int, receipt_file_id: str) -> dict:
     """
     مرحله‌ی ۳ فلو: مشتری رسید را آپلود می‌کند.

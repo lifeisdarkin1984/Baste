@@ -39,6 +39,42 @@ async def notify_reseller_insufficient_credit(reseller_bot: Bot, reseller_id: in
         logger.exception(f"ارسال هشدار کمبود اعتبار به نماینده {reseller_id} ناموفق بود.")
 
 
+async def notify_reseller_wallet_topup_insufficient_credit(reseller_bot: Bot, reseller_id: int, topup_id: int) -> None:
+    """کیف‌پول مشتری شارژ شد، ولی کسر کمیسیون نماینده از افزایش موجودی ناموفق بود."""
+    reseller = await fetch_one(
+        "SELECT telegram_numeric_id FROM resellers WHERE id = %s", (reseller_id,)
+    )
+    if reseller is None:
+        logger.warning(f"نماینده {reseller_id} برای اطلاع‌رسانی کمبود اعتبار (شارژ کیف‌پول مشتری) پیدا نشد.")
+        return
+    try:
+        await reseller_bot.send_message(
+            reseller["telegram_numeric_id"],
+            f"⚠️ افزایش موجودی کیف‌پول مشتری (درخواست شماره {topup_id}) تأیید و برای مشتری اعمال شد، "
+            f"ولی کمیسیون آن به‌خاطر کمبود اعتبار کیف‌پول شما کسر نشد. لطفاً هرچه سریع‌تر کیف‌پول کمیسیون "
+            f"خود را شارژ کنید.",
+        )
+    except Exception:
+        logger.exception(f"ارسال هشدار کمبود اعتبار (شارژ کیف‌پول مشتری) به نماینده {reseller_id} ناموفق بود.")
+
+
+async def notify_super_admin_wallet_topup_insufficient_credit(reseller_id: int, topup_id: int) -> None:
+    admin_bot = Bot(
+        token=Config.SUPER_ADMIN_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    try:
+        await admin_bot.send_message(
+            Config.SUPER_ADMIN_TELEGRAM_ID,
+            f"🚨 افزایش موجودی کیف‌پول مشتری (درخواست {topup_id}, نماینده {reseller_id}) تأیید شد ولی "
+            f"کمیسیون آن به‌خاطر کمبود اعتبار نماینده کسر نشد.",
+        )
+    except Exception:
+        logger.exception("ارسال هشدار کمبود اعتبار (شارژ کیف‌پول مشتری) به مدیر کل ناموفق بود.")
+    finally:
+        await admin_bot.session.close()
+
+
 async def notify_super_admin_insufficient_credit(reseller_id: int, order_code: str) -> None:
     """
     یک بات موقت با توکن مدیر کل می‌سازد، پیام هشدار را می‌فرستد و سشن را می‌بندد.
