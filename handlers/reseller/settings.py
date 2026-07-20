@@ -10,7 +10,6 @@ from aiogram.fsm.context import FSMContext
 from database.db import execute
 from services.referral_service import set_referral_enabled, set_referral_profit_percent, get_referral_settings
 from services.forced_join_service import add_forced_channel, get_forced_channels
-from services.feature_flag_service import request_feature
 from utils.states import ResellerSettingsStates
 from utils.keyboards import settings_submenu, back_to_reseller_menu_button
 
@@ -118,21 +117,6 @@ async def receive_discount_usage_limit_and_save(message: Message, state: FSMCont
     )
     await message.answer(f"کد تخفیف {data['code']} با {data['percent']}٪ تخفیف ثبت شد ✅", reply_markup=back_to_reseller_menu_button())
     await state.clear()
-
-
-# ---------- درخواست فیچر ----------
-@router.callback_query(F.data == "settings:request_recharge")
-async def request_recharge_feature_cb(callback: CallbackQuery, reseller_id: int):
-    await request_feature(reseller_id, "recharge")
-    await callback.message.answer("درخواست فعال‌سازی فروش شارژ برای مدیر کل ارسال شد؛ منتظر تأیید باشید.", reply_markup=back_to_reseller_menu_button())
-    await callback.answer()
-
-
-@router.callback_query(F.data == "settings:request_vpn")
-async def request_vpn_feature_cb(callback: CallbackQuery, reseller_id: int):
-    await request_feature(reseller_id, "vpn")
-    await callback.message.answer("درخواست فعال‌سازی فروش VPN برای مدیر کل ارسال شد؛ منتظر تأیید باشید.", reply_markup=back_to_reseller_menu_button())
-    await callback.answer()
 
 
 # ---------- آیدی پشتیبانی ----------
