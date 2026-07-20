@@ -25,7 +25,12 @@ from services.referral_service import register_referral
 from services.discount_service import validate_discount_code, apply_discount, increment_usage, InvalidDiscountCode
 from services.payment_methods_service import list_cards, get_zarinpal_merchant, format_card_number
 from utils.states import CustomerOrderStates
-from utils.keyboards import catalog_button, package_purchase_button
+from utils.keyboards import (
+    package_purchase_button,
+    customer_main_reply_keyboard,
+    CUSTOMER_CATALOG_BUTTON_TEXT,
+    CUSTOMER_SUPPORT_BUTTON_TEXT,
+)
 
 router = Router(name="customer_orders")
 
@@ -43,24 +48,25 @@ async def customer_start(message: Message, reseller_id: int):
         except ValueError:
             pass
 
+    reseller = await fetch_one("SELECT support_contact FROM resellers WHERE id = %s", (reseller_id,))
+    has_support = bool(reseller and reseller["support_contact"])
+
     await message.answer(
-        "به ربات فروش خوش آمدید! 👋\nبرای مشاهده‌ی بسته‌ها روی دکمه زیر بزنید.",
-        reply_markup=catalog_button(),
+        "به ربات فروش خوش آمدید! 👋\nبرای مشاهده‌ی بسته‌ها از دکمه‌ی زیر (پایین صفحه) استفاده کنید.",
+        reply_markup=customer_main_reply_keyboard(has_support_contact=has_support),
     )
 
 
-@router.callback_query(F.data == "show_catalog")
-async def show_catalog(callback: CallbackQuery, reseller_id: int):
+async def _send_catalog(message: Message, reseller_id: int, user_id: int):
+    """منطق مشترک نمایش کاتالوگ — هم از دکمه‌ی کیبورد پایین صفحه صدا زده می‌شود."""
     # جوین اجباری: بخش ۷ اسپک، فاز ۲
-    joined, missing_channels = await user_has_joined_all(callback.bot, reseller_id, callback.from_user.id)
+    joined, missing_channels = await user_has_joined_all(message.bot, reseller_id, user_id)
     if not joined:
         channels_text = "\n".join(f"- {c}" for c in missing_channels)
-        await callback.message.answer(
+        await message.answer(
             f"⛔️ برای مشاهده‌ی کاتالوگ ابتدا باید عضو کانال(های) زیر شوید:\n{channels_text}\n\n"
-            f"بعد از عضویت، دوباره روی «مشاهده کاتالوگ» بزنید.",
-            reply_markup=catalog_button(),
+            f"بعد از عضویت، دوباره روی «{CUSTOMER_CATALOG_BUTTON_TEXT}» بزنید."
         )
-        await callback.answer()
         return
 
     packages = await fetch_all(
@@ -70,13 +76,26 @@ async def show_catalog(callback: CallbackQuery, reseller_id: int):
         (reseller_id,),
     )
     if not packages:
-        await callback.message.answer("در حال حاضر بسته‌ای ثبت نشده است.")
+        await message.answer("در حال حاضر بسته‌ای ثبت نشده است.")
         return
 
     for pkg in packages:
         text = f"📦 {pkg['operator_name']} - {pkg['title']}\n{pkg['name']}\n💰 {pkg['sale_price']:,.0f} تومان"
-        await callback.message.answer(text, reply_markup=package_purchase_button(pkg["id"]))
-    await callback.answer()
+        # دکمه‌ی «خرید» چون به یک بسته‌ی مشخص وصله (نیاز به callback_data داینامیک داره)
+        # همچنان شیشه‌ای/زیر پیام می‌مونه؛ فقط دکمه‌های ناوبری اصلی به کیبورد پایین صفحه رفتن.
+        await message.answer(text, reply_markup=package_purchase_button(pkg["id"]))
+
+
+@router.message(F.text == CUSTOMER_CATALOG_BUTTON_TEXT)
+async def show_catalog_from_keyboard(message: Message, reseller_id: int):
+    await _send_catalog(message, reseller_id, message.from_user.id)
+
+
+@router.message(F.text == CUSTOMER_SUPPORT_BUTTON_TEXT)
+async def show_support_from_keyboard(message: Message, reseller_id: int):
+    reseller = await fetch_one("SELECT support_contact FROM resellers WHERE id = %s", (reseller_id,))
+    contact = reseller["support_contact"] if reseller else None
+    await message.answer(f"📞 پشتیبانی: {contact or 'در دسترس نیست'}")
 
 
 @router.callback_query(F.data.startswith("buy:"))
