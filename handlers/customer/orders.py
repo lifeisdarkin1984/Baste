@@ -297,6 +297,15 @@ async def _process_purchase(message: Message, reseller_id: int, state: FSMContex
         return
 
     customer = await get_or_create_customer(reseller_id, message.from_user.id)
+    package_info = await fetch_one(
+        "SELECT p.name AS package_name, c.operator_name, c.title AS category_title "
+        "FROM packages p JOIN categories c ON p.category_id = c.id WHERE p.id = %s",
+        (package_id,),
+    )
+    package_label = (
+        f"{package_info['operator_name']} - {package_info['category_title']} / {package_info['package_name']}"
+        if package_info else "نامشخص"
+    )
 
     # مرحله ۱: تلاش برای پرداخت خودکار از کیف‌پول مشتری
     try:
@@ -315,6 +324,7 @@ async def _process_purchase(message: Message, reseller_id: int, state: FSMContex
         has_support = bool(reseller and reseller["support_contact"])
         await message.answer(
             f"✅ پرداخت از کیف‌پول شما با موفقیت انجام شد.\nشناسه سفارش: {order['order_code']}\n"
+            f"بسته: {package_label}\n"
             f"شماره خط: {phone_number}\n"
             f"سفارش شما تأیید شد و به‌زودی توسط نماینده فعال می‌شود.\n"
             f"پشتیبانی: {reseller['support_contact'] or 'در دسترس نیست'}",
@@ -326,6 +336,7 @@ async def _process_purchase(message: Message, reseller_id: int, state: FSMContex
                     reseller["telegram_numeric_id"],
                     f"🛒 سفارش جدید {order['order_code']} با پرداخت خودکار از کیف‌پول مشتری ثبت شد "
                     f"(مبلغ: {order['package_price']:,.0f} تومان).\n"
+                    f"بسته: {package_label}\n"
                     f"شماره خط برای فعال‌سازی: {phone_number}\n"
                     f"بعد از فعال‌سازی دستی بسته، دکمه‌ی زیر را بزنید.",
                     reply_markup=activate_order_button(order["id"]),
@@ -370,6 +381,7 @@ async def _process_purchase(message: Message, reseller_id: int, state: FSMContex
     await message.answer(
         f"موجودی کیف‌پول شما کافی نیست، پس سفارش با روش رسیدی ثبت شد ✅\n"
         f"شناسه سفارش: {order['order_code']}\n"
+        f"بسته: {package_label}\n"
         f"شماره خط: {phone_number}\n"
         f"مبلغ قابل پرداخت: {order['package_price']:,.0f} تومان\n\n"
         f"{payment_info}\n\n"
