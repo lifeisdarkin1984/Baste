@@ -17,6 +17,7 @@ from aiogram.enums import ParseMode
 
 from config import Config
 from database.db import init_pool, close_pool
+from database.migrator import run_migrations
 from core.bot_manager import DynamicBotManager
 from core.error_handler import register_error_handler
 from handlers.admin import register_admin_handlers
@@ -60,6 +61,7 @@ async def run_admin_bot():
 
 async def main():
     await init_pool()
+    await run_migrations()
     bot_manager = DynamicBotManager()
     try:
         await asyncio.gather(
