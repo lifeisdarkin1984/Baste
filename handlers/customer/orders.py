@@ -1,5 +1,18 @@
 """
-هندلرهای پنل مشتری نهایی (بخش ۴ و ۷ اسپک).
+هندلرهای پنل مشتری نهایی (بخش ۴ و ۷ اسپک) + ناوبری پوشه‌ای کاتالوگ و خرید
+خودکار از کیف‌پول (فیچر جدید طبق درخواست).
+
+ساختار ناوبری (همه با کیبورد پایین صفحه، نه inline):
+  🛍 مشاهده کاتالوگ
+    -> لیست اپراتورها (پوشه اصلی)
+       -> لیست زیرپوشه‌ها (روزانه/هفتگی/ماهانه/...)
+          -> لیست بسته‌ها
+             -> جزئیات بسته + دکمه‌ی متنی «🛒 خرید این بسته»
+
+موقع زدن «خرید»:
+  ۱. اگر موجودی کیف‌پول مشتری کافی باشد -> کسر خودکار، سفارش مستقیم confirmed،
+     نیازی به رسید/تأیید نماینده نیست (فقط فعال‌سازی نهایی).
+  ۲. در غیر این صورت -> فلوی قبلی: نمایش کارت‌ها/زرین‌پال نماینده + آپلود رسید.
 """
 from decimal import Decimal, InvalidOperation
 
@@ -11,10 +24,12 @@ from database.db import fetch_all, fetch_one, execute
 from services.order_service import (
     get_or_create_customer,
     create_order,
+    create_order_paid_by_wallet,
     submit_receipt,
     PendingOrderLimitExceeded,
     CustomerBlacklistedError,
     OrderInsufficientCreditError,
+    WalletInsufficientBalanceError,
 )
 from services.notifications import (
     notify_reseller_insufficient_credit,
@@ -24,19 +39,27 @@ from services.forced_join_service import user_has_joined_all
 from services.referral_service import register_referral
 from services.discount_service import validate_discount_code, apply_discount, increment_usage, InvalidDiscountCode
 from services.payment_methods_service import list_cards, get_zarinpal_merchant, format_card_number
-from utils.states import CustomerOrderStates
+from services.customer_wallet_service import get_wallet_balance
+from utils.states import CustomerOrderStates, CustomerCatalogStates
 from utils.keyboards import (
-    package_purchase_button,
     customer_main_reply_keyboard,
+    customer_folder_reply_keyboard,
+    customer_package_detail_keyboard,
+    activate_order_button,
     CUSTOMER_CATALOG_BUTTON_TEXT,
     CUSTOMER_SUPPORT_BUTTON_TEXT,
+    CUSTOMER_WALLET_BUTTON_TEXT,
+    CUSTOMER_BACK_BUTTON_TEXT,
+    CUSTOMER_BACK_TO_MENU_BUTTON_TEXT,
+    CUSTOMER_BUY_BUTTON_TEXT,
 )
 
 router = Router(name="customer_orders")
 
 
 @router.message(F.text.startswith("/start"))
-async def customer_start(message: Message, reseller_id: int):
+async def customer_start(message: Message, reseller_id: int, state: FSMContext):
+    await state.clear()
     # لینک رفرال: https://t.me/<bot>?start=ref_<customer_id>
     parts = message.text.split(maxsplit=1)
     customer = await get_or_create_customer(reseller_id, message.from_user.id)
@@ -57,38 +80,11 @@ async def customer_start(message: Message, reseller_id: int):
     )
 
 
-async def _send_catalog(message: Message, reseller_id: int, user_id: int):
-    """منطق مشترک نمایش کاتالوگ — هم از دکمه‌ی کیبورد پایین صفحه صدا زده می‌شود."""
-    # جوین اجباری: بخش ۷ اسپک، فاز ۲
-    joined, missing_channels = await user_has_joined_all(message.bot, reseller_id, user_id)
-    if not joined:
-        channels_text = "\n".join(f"- {c}" for c in missing_channels)
-        await message.answer(
-            f"⛔️ برای مشاهده‌ی کاتالوگ ابتدا باید عضو کانال(های) زیر شوید:\n{channels_text}\n\n"
-            f"بعد از عضویت، دوباره روی «{CUSTOMER_CATALOG_BUTTON_TEXT}» بزنید."
-        )
-        return
-
-    packages = await fetch_all(
-        "SELECT p.id, p.name, p.sale_price, c.operator_name, c.title "
-        "FROM packages p JOIN categories c ON p.category_id = c.id "
-        "WHERE p.reseller_id = %s AND p.is_active = TRUE",
-        (reseller_id,),
-    )
-    if not packages:
-        await message.answer("در حال حاضر بسته‌ای ثبت نشده است.")
-        return
-
-    for pkg in packages:
-        text = f"📦 {pkg['operator_name']} - {pkg['title']}\n{pkg['name']}\n💰 {pkg['sale_price']:,.0f} تومان"
-        # دکمه‌ی «خرید» چون به یک بسته‌ی مشخص وصله (نیاز به callback_data داینامیک داره)
-        # همچنان شیشه‌ای/زیر پیام می‌مونه؛ فقط دکمه‌های ناوبری اصلی به کیبورد پایین صفحه رفتن.
-        await message.answer(text, reply_markup=package_purchase_button(pkg["id"]))
-
-
-@router.message(F.text == CUSTOMER_CATALOG_BUTTON_TEXT)
-async def show_catalog_from_keyboard(message: Message, reseller_id: int):
-    await _send_catalog(message, reseller_id, message.from_user.id)
+async def _back_to_main_menu(message: Message, reseller_id: int, state: FSMContext):
+    await state.clear()
+    reseller = await fetch_one("SELECT support_contact FROM resellers WHERE id = %s", (reseller_id,))
+    has_support = bool(reseller and reseller["support_contact"])
+    await message.answer("منوی اصلی:", reply_markup=customer_main_reply_keyboard(has_support_contact=has_support))
 
 
 @router.message(F.text == CUSTOMER_SUPPORT_BUTTON_TEXT)
@@ -98,15 +94,192 @@ async def show_support_from_keyboard(message: Message, reseller_id: int):
     await message.answer(f"📞 پشتیبانی: {contact or 'در دسترس نیست'}")
 
 
-@router.callback_query(F.data.startswith("buy:"))
-async def buy_package(callback: CallbackQuery, reseller_id: int, state: FSMContext):
-    package_id = int(callback.data.split(":")[1])
-    customer = await get_or_create_customer(reseller_id, callback.from_user.id)
+# ==========================================================================
+# سطح ۱: لیست اپراتورها (پوشه اصلی)
+# ==========================================================================
+async def _show_operators(message: Message, reseller_id: int, user_id: int, state: FSMContext):
+    joined, missing_channels = await user_has_joined_all(message.bot, reseller_id, user_id)
+    if not joined:
+        channels_text = "\n".join(f"- {c}" for c in missing_channels)
+        await message.answer(
+            f"⛔️ برای مشاهده‌ی کاتالوگ ابتدا باید عضو کانال(های) زیر شوید:\n{channels_text}\n\n"
+            f"بعد از عضویت، دوباره روی «{CUSTOMER_CATALOG_BUTTON_TEXT}» بزنید."
+        )
+        return
+
+    operators = await fetch_all(
+        "SELECT id, operator_name FROM categories WHERE reseller_id = %s AND parent_category_id IS NULL",
+        (reseller_id,),
+    )
+    if not operators:
+        await message.answer("در حال حاضر بسته‌ای ثبت نشده است.")
+        return
+
+    operator_map = {f"📁 {op['operator_name']}": op["id"] for op in operators}
+    await state.set_state(CustomerCatalogStates.browsing_operators)
+    await state.update_data(operator_map=operator_map)
+    await message.answer(
+        "یک اپراتور را انتخاب کنید:",
+        reply_markup=customer_folder_reply_keyboard(list(operator_map.keys()), back_text=CUSTOMER_BACK_TO_MENU_BUTTON_TEXT),
+    )
+
+
+@router.message(F.text == CUSTOMER_CATALOG_BUTTON_TEXT)
+async def show_catalog_from_keyboard(message: Message, reseller_id: int, state: FSMContext):
+    await _show_operators(message, reseller_id, message.from_user.id, state)
+
+
+@router.message(CustomerCatalogStates.browsing_operators)
+async def handle_operator_pick(message: Message, reseller_id: int, state: FSMContext):
+    if message.text == CUSTOMER_BACK_TO_MENU_BUTTON_TEXT:
+        await _back_to_main_menu(message, reseller_id, state)
+        return
+
+    data = await state.get_data()
+    operator_id = data.get("operator_map", {}).get(message.text)
+    if operator_id is None:
+        await message.answer("لطفاً یکی از گزینه‌های روی کیبورد را انتخاب کنید.")
+        return
+
+    subcategories = await fetch_all(
+        "SELECT id, title FROM categories WHERE parent_category_id = %s", (operator_id,)
+    )
+    if not subcategories:
+        await message.answer("این اپراتور هنوز زیرپوشه‌ای (مثل ماهانه/هفتگی) ندارد.")
+        return
+
+    subcategory_map = {f"📂 {c['title']}": c["id"] for c in subcategories}
+    await state.set_state(CustomerCatalogStates.browsing_subcategories)
+    await state.update_data(subcategory_map=subcategory_map)
+    await message.answer(
+        "یک زیرپوشه را انتخاب کنید:",
+        reply_markup=customer_folder_reply_keyboard(list(subcategory_map.keys()), back_text=CUSTOMER_BACK_BUTTON_TEXT),
+    )
+
+
+@router.message(CustomerCatalogStates.browsing_subcategories)
+async def handle_subcategory_pick(message: Message, reseller_id: int, state: FSMContext):
+    if message.text == CUSTOMER_BACK_BUTTON_TEXT:
+        await _show_operators(message, reseller_id, message.from_user.id, state)
+        return
+
+    data = await state.get_data()
+    category_id = data.get("subcategory_map", {}).get(message.text)
+    if category_id is None:
+        await message.answer("لطفاً یکی از گزینه‌های روی کیبورد را انتخاب کنید.")
+        return
+
+    packages = await fetch_all(
+        "SELECT id, name, sale_price FROM packages WHERE category_id = %s AND is_active = TRUE",
+        (category_id,),
+    )
+    if not packages:
+        await message.answer("در این زیرپوشه هنوز بسته‌ای ثبت نشده است.")
+        return
+
+    package_map = {f"📦 {p['name']} — {p['sale_price']:,.0f} تومان": p["id"] for p in packages}
+    await state.update_data(package_map=package_map)
+    await state.set_state(CustomerCatalogStates.browsing_packages)
+    await message.answer(
+        "یک بسته را انتخاب کنید:",
+        reply_markup=customer_folder_reply_keyboard(list(package_map.keys()), back_text=CUSTOMER_BACK_BUTTON_TEXT),
+    )
+
+
+@router.message(CustomerCatalogStates.browsing_packages)
+async def handle_package_pick(message: Message, reseller_id: int, state: FSMContext):
+    data = await state.get_data()
+    if message.text == CUSTOMER_BACK_BUTTON_TEXT:
+        operator_map = data.get("operator_map", {})
+        await state.set_state(CustomerCatalogStates.browsing_operators)
+        await message.answer(
+            "یک اپراتور را انتخاب کنید:",
+            reply_markup=customer_folder_reply_keyboard(list(operator_map.keys()), back_text=CUSTOMER_BACK_TO_MENU_BUTTON_TEXT),
+        )
+        return
+
+    package_id = data.get("package_map", {}).get(message.text)
+    if package_id is None:
+        await message.answer("لطفاً یکی از گزینه‌های روی کیبورد را انتخاب کنید.")
+        return
+
+    package = await fetch_one(
+        "SELECT p.id, p.name, p.sale_price, c.operator_name, c.title "
+        "FROM packages p JOIN categories c ON p.category_id = c.id WHERE p.id = %s",
+        (package_id,),
+    )
+    if package is None:
+        await message.answer("این بسته دیگر موجود نیست.")
+        return
+
+    await state.set_state(CustomerCatalogStates.package_selected)
+    await state.update_data(selected_package_id=package_id)
+    await message.answer(
+        f"📦 {package['operator_name']} - {package['title']}\n{package['name']}\n"
+        f"💰 {package['sale_price']:,.0f} تومان\n\n"
+        f"برای خرید، دکمه‌ی «{CUSTOMER_BUY_BUTTON_TEXT}» را بزنید.",
+        reply_markup=customer_package_detail_keyboard(),
+    )
+
+
+@router.message(CustomerCatalogStates.package_selected, F.text == CUSTOMER_BACK_BUTTON_TEXT)
+async def handle_package_detail_back(message: Message, reseller_id: int, state: FSMContext):
+    data = await state.get_data()
+    package_map = data.get("package_map", {})
+    await state.set_state(CustomerCatalogStates.browsing_packages)
+    await message.answer(
+        "یک بسته را انتخاب کنید:",
+        reply_markup=customer_folder_reply_keyboard(list(package_map.keys()), back_text=CUSTOMER_BACK_BUTTON_TEXT),
+    )
+
+
+@router.message(CustomerCatalogStates.package_selected, F.text == CUSTOMER_BUY_BUTTON_TEXT)
+async def handle_buy_button(message: Message, reseller_id: int, state: FSMContext):
+    data = await state.get_data()
+    package_id = data.get("selected_package_id")
+    if package_id is None:
+        await _back_to_main_menu(message, reseller_id, state)
+        return
+
+    customer = await get_or_create_customer(reseller_id, message.from_user.id)
+
+    # مرحله ۱: تلاش برای پرداخت خودکار از کیف‌پول مشتری
+    try:
+        order = await create_order_paid_by_wallet(reseller_id, package_id, customer["id"])
+    except CustomerBlacklistedError:
+        await message.answer("⛔️ امکان ثبت سفارش برای شما وجود ندارد.")
+        await state.clear()
+        return
+    except WalletInsufficientBalanceError:
+        order = None
+    else:
+        await state.clear()
+        reseller = await fetch_one(
+            "SELECT telegram_numeric_id, support_contact FROM resellers WHERE id = %s", (reseller_id,)
+        )
+        await message.answer(
+            f"✅ پرداخت از کیف‌پول شما با موفقیت انجام شد.\nشناسه سفارش: {order['order_code']}\n"
+            f"سفارش شما تأیید شد و به‌زودی توسط نماینده فعال می‌شود.\n"
+            f"پشتیبانی: {reseller['support_contact'] or 'در دسترس نیست'}"
+        )
+        if reseller and reseller["telegram_numeric_id"]:
+            try:
+                await message.bot.send_message(
+                    reseller["telegram_numeric_id"],
+                    f"🛒 سفارش جدید {order['order_code']} با پرداخت خودکار از کیف‌پول مشتری ثبت شد "
+                    f"(مبلغ: {order['package_price']:,.0f} تومان).\nبعد از فعال‌سازی دستی بسته، دکمه‌ی زیر را بزنید.",
+                    reply_markup=activate_order_button(order["id"]),
+                )
+            except Exception:
+                pass
+        return
+
+    # مرحله ۲: موجودی کافی نبود -> فلوی عادی رسید
     try:
         order = await create_order(reseller_id, package_id, customer["id"])
     except CustomerBlacklistedError:
-        await callback.message.answer("⛔️ امکان ثبت سفارش برای شما وجود ندارد.")
-        await callback.answer()
+        await message.answer("⛔️ امکان ثبت سفارش برای شما وجود ندارد.")
+        await state.clear()
         return
 
     reseller = await fetch_one(
@@ -116,7 +289,6 @@ async def buy_package(callback: CallbackQuery, reseller_id: int, state: FSMConte
     await state.update_data(order_id=order["id"])
     await state.set_state(CustomerOrderStates.waiting_receipt)
 
-    # «روش دریافت وجه از مشتری» — کارت‌های فعال نماینده + زرین‌پال شخصی او (اگر تنظیم شده)
     active_cards = await list_cards(reseller_id, only_active=True)
     zarinpal_merchant = await get_zarinpal_merchant(reseller_id)
 
@@ -135,15 +307,15 @@ async def buy_package(callback: CallbackQuery, reseller_id: int, state: FSMConte
     else:
         payment_info = "\n".join(payment_lines)
 
-    await callback.message.answer(
-        f"سفارش شما ثبت شد ✅\nشناسه سفارش: {order['order_code']}\n"
+    await message.answer(
+        f"موجودی کیف‌پول شما کافی نیست، پس سفارش با روش رسیدی ثبت شد ✅\n"
+        f"شناسه سفارش: {order['order_code']}\n"
         f"مبلغ قابل پرداخت: {order['package_price']:,.0f} تومان\n\n"
         f"{payment_info}\n\n"
         f"اگر کد تخفیف دارید، با فرمت زیر ارسال کنید:\n/discount CODE\n\n"
         f"بعد از پرداخت، تصویر رسید را همینجا ارسال کنید.\n"
         f"پشتیبانی: {reseller['support_contact'] or 'در دسترس نیست'}"
     )
-    await callback.answer()
 
 
 @router.message(CustomerOrderStates.waiting_receipt, F.text.startswith("/discount "))
@@ -183,11 +355,6 @@ async def receive_receipt(message: Message, state: FSMContext):
         )
         return
     except OrderInsufficientCreditError as e:
-        # رفع باگ: قبلاً اینجا فقط یک کامنت ادعا می‌کرد به نماینده/مدیر کل اطلاع
-        # داده می‌شود ولی هیچ پیامی واقعاً ارسال نمی‌شد و وضعیت سفارش هم به‌اشتباه
-        # به‌صورت عادی (awaiting_receipt_review) commit شده بود. حالا order_service
-        # وضعیت را روی failed_insufficient_credit ثبت می‌کند (اتمیک) و اینجا واقعاً
-        # به هر دو طرف پیام می‌فرستیم.
         await notify_reseller_insufficient_credit(message.bot, e.reseller_id, e.order_code)
         await notify_super_admin_insufficient_credit(e.reseller_id, e.order_code)
         await message.answer(
