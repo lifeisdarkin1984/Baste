@@ -48,6 +48,22 @@ class ResellerSettingsStates(StatesGroup):
     entering_discount_code = State()
     entering_discount_percent = State()
     entering_discount_usage_limit = State()
+    entering_support_contact = State()   # ثبت آیدی پشتیبانی که به مشتری نمایش داده می‌شود
+
+
+# ---------- ناوبری پوشه‌ای کاتالوگ برای مشتری (کیبورد پایین صفحه، نه inline) ----------
+class CustomerCatalogStates(StatesGroup):
+    browsing_operators = State()      # لیست اپراتورها (پوشه اصلی)
+    browsing_subcategories = State()  # لیست زیرپوشه‌ها (ماهانه/هفتگی/...) یک اپراتور خاص
+    browsing_packages = State()       # لیست بسته‌های یک زیرپوشه خاص
+    package_selected = State()        # یک بسته انتخاب شده، منتظر تأیید دکمه‌ی «خرید»
+
+
+# ---------- افزایش موجودی کیف‌پول مشتری ----------
+class CustomerWalletStates(StatesGroup):
+    choosing_method = State()   # کارت‌به‌کارت یا زرین‌پال
+    entering_amount = State()
+    uploading_receipt = State()
 
 
 class SuperAdminResellerStates(StatesGroup):

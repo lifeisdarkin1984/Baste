@@ -18,13 +18,63 @@ from aiogram.types import (
 # ==========================================================================
 CUSTOMER_CATALOG_BUTTON_TEXT = "🛍 مشاهده کاتالوگ"
 CUSTOMER_SUPPORT_BUTTON_TEXT = "📞 پشتیبانی"
+CUSTOMER_WALLET_BUTTON_TEXT = "💰 کیف پول من"
+CUSTOMER_BACK_BUTTON_TEXT = "⬅️ بازگشت"
+CUSTOMER_BACK_TO_MENU_BUTTON_TEXT = "🏠 بازگشت به منوی اصلی"
+CUSTOMER_TOPUP_BUTTON_TEXT = "💳 افزایش موجودی"
+CUSTOMER_TOPUP_CARD_BUTTON_TEXT = "💳 کارت‌به‌کارت"
+CUSTOMER_TOPUP_ZARINPAL_BUTTON_TEXT = "🌐 زرین‌پال"
+CUSTOMER_BUY_BUTTON_TEXT = "🛒 خرید این بسته"
 
 
 def customer_main_reply_keyboard(has_support_contact: bool = True) -> ReplyKeyboardMarkup:
     """کیبورد ثابت پایین صفحه‌ی مشتری. resize_keyboard کوچیکش می‌کنه که کل صفحه رو نگیره."""
-    rows = [[KeyboardButton(text=CUSTOMER_CATALOG_BUTTON_TEXT)]]
+    rows = [
+        [KeyboardButton(text=CUSTOMER_CATALOG_BUTTON_TEXT)],
+        [KeyboardButton(text=CUSTOMER_WALLET_BUTTON_TEXT)],
+    ]
     if has_support_contact:
         rows.append([KeyboardButton(text=CUSTOMER_SUPPORT_BUTTON_TEXT)])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
+
+
+def customer_folder_reply_keyboard(item_names: list[str], back_text: str = CUSTOMER_BACK_TO_MENU_BUTTON_TEXT) -> ReplyKeyboardMarkup:
+    """کیبورد پایین صفحه برای نمایش لیست پوشه/زیرپوشه/بسته به‌صورت دکمه‌ی متنی، یکی در هر ردیف."""
+    rows = [[KeyboardButton(text=name)] for name in item_names]
+    rows.append([KeyboardButton(text=back_text)])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
+
+
+def customer_package_detail_keyboard() -> ReplyKeyboardMarkup:
+    """کیبورد پایین صفحه بعد از انتخاب یک بسته‌ی مشخص: دکمه‌ی متنی «خرید» + بازگشت."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=CUSTOMER_BUY_BUTTON_TEXT)],
+            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def customer_wallet_menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=CUSTOMER_TOPUP_BUTTON_TEXT)],
+            [KeyboardButton(text=CUSTOMER_BACK_TO_MENU_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def customer_topup_method_keyboard(has_card: bool, has_zarinpal: bool) -> ReplyKeyboardMarkup:
+    rows = []
+    if has_card:
+        rows.append([KeyboardButton(text=CUSTOMER_TOPUP_CARD_BUTTON_TEXT)])
+    if has_zarinpal:
+        rows.append([KeyboardButton(text=CUSTOMER_TOPUP_ZARINPAL_BUTTON_TEXT)])
+    rows.append([KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
 
@@ -68,6 +118,16 @@ def sanity_check_confirm_buttons(pending_token: str) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="✅ بله، قیمت درست است", callback_data=f"price_confirm:{pending_token}", style="success"),
             InlineKeyboardButton(text="✏️ اصلاح قیمت", callback_data=f"price_edit:{pending_token}", style="danger"),
+        ],
+    ])
+
+
+def wallet_topup_review_buttons(topup_id: int) -> InlineKeyboardMarkup:
+    """دکمه‌های تأیید/رد رسید افزایش موجودی کیف‌پول مشتری، برای نماینده/اپراتور."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ تأیید و شارژ کیف‌پول", callback_data=f"wallet_topup_confirm:{topup_id}", style="success"),
+            InlineKeyboardButton(text="❌ رد رسید", callback_data=f"wallet_topup_reject:{topup_id}", style="danger"),
         ],
     ])
 
@@ -304,6 +364,7 @@ def settings_submenu(referral_enabled: bool) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🏷 افزودن کد تخفیف", callback_data="settings:add_discount", style="success")],
         [InlineKeyboardButton(text="📶 درخواست فروش شارژ", callback_data="settings:request_recharge", style="primary")],
         [InlineKeyboardButton(text="🔒 درخواست فروش VPN", callback_data="settings:request_vpn", style="primary")],
+        [InlineKeyboardButton(text="📞 ثبت آیدی پشتیبانی", callback_data="settings:set_support_contact", style="primary")],
         [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
     ])
 
