@@ -20,6 +20,8 @@
 نکته‌ی دیتابیس لازم: مقدار 'failed_insufficient_credit' باید به ستون ENUM
 `orders.status` اضافه شود (فایل migration پیوست را اجرا کنید).
 """
+import random
+import string
 from datetime import datetime
 from decimal import Decimal
 
@@ -79,7 +81,11 @@ async def count_pending_orders(customer_id: int) -> int:
 
 def _generate_order_code(prefix: str) -> str:
     now = datetime.now()
-    return f"{prefix}-{now.strftime('%y%m%d')}-{now.strftime('%H%M')}"
+    # قبلاً فقط تا دقیقه (%H%M) بود، یعنی هر دو سفارش تو یه دقیقه از یه نماینده
+    # (مثلاً با چندبار زدن سریع دکمه‌ی خرید) روی UNIQUE KEY order_code تصادم
+    # می‌کردن. الان تا ثانیه + یه پسوند تصادفی کوتاه اضافه شده تا یکتا بمونه.
+    suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=3))
+    return f"{prefix}-{now.strftime('%y%m%d')}-{now.strftime('%H%M%S')}{suffix}"
 
 
 async def create_order(reseller_id: int, package_id: int, customer_id: int) -> dict:
@@ -98,12 +104,17 @@ async def create_order(reseller_id: int, package_id: int, customer_id: int) -> d
         raise ValueError("بسته پیدا نشد.")
 
     order_code = _generate_order_code(reseller["order_prefix"])
-    order_id = await execute(
+    await execute(
         "INSERT INTO orders (order_code, reseller_id, package_id, customer_id, status, package_price) "
         "VALUES (%s, %s, %s, %s, 'awaiting_payment', %s)",
         (order_code, reseller_id, package_id, customer_id, package["sale_price"]),
     )
-    return await fetch_one("SELECT * FROM orders WHERE id = %s", (order_id,))
+    # order_code خودمون تولیدش کردیم و UNIQUE هم هست، پس واکشی دوباره بر اساسش
+    # قطعی‌تر از تکیه به cur.lastrowid روی یک اتصال جدا از pool هست.
+    order = await fetch_one("SELECT * FROM orders WHERE order_code = %s", (order_code,))
+    if order is None:
+        raise RuntimeError(f"سفارش {order_code} درست ثبت شد ولی بلافاصله پیدا نشد.")
+    return order
 
 
 class WalletInsufficientBalanceError(Exception):
@@ -156,9 +167,14 @@ async def create_order_paid_by_wallet(reseller_id: int, package_id: int, custome
             "VALUES (%s, %s, %s, %s, 'confirmed', %s, 0.00, FALSE, TRUE, NOW())",
             (order_code, reseller_id, package_id, customer_id, price),
         )
-        order_id = cur.lastrowid
 
-    return await fetch_one("SELECT * FROM orders WHERE id = %s", (order_id,))
+    # order_code خودمون تولیدش کردیم و UNIQUE هم هست، پس واکشی دوباره بر اساسش
+    # قطعی‌تر از تکیه به cur.lastrowid روی یک اتصال جدا از pool هست (باگی که
+    # باعث می‌شد اینجا None برگرده و بعدش تو هندلر با خطای TypeError بترکه).
+    order = await fetch_one("SELECT * FROM orders WHERE order_code = %s", (order_code,))
+    if order is None:
+        raise RuntimeError(f"سفارش {order_code} درست ثبت شد ولی بلافاصله پیدا نشد.")
+    return order
 
 
 async def submit_receipt(order_id: int, receipt_file_id: str) -> dict:
