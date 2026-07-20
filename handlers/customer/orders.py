@@ -110,7 +110,8 @@ async def _show_operators(message: Message, reseller_id: int, user_id: int, stat
         return
 
     operators = await fetch_all(
-        "SELECT id, operator_name FROM categories WHERE reseller_id = %s AND parent_category_id IS NULL",
+        "SELECT id, operator_name FROM categories WHERE reseller_id = %s AND parent_category_id IS NULL "
+        "AND catalog_type = 'package'",
         (reseller_id,),
     )
     if not operators:
