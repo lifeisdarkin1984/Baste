@@ -18,6 +18,7 @@ from aiogram.enums import ParseMode
 from config import Config
 from database.db import init_pool, close_pool
 from core.bot_manager import DynamicBotManager
+from core.error_handler import register_error_handler
 from handlers.admin import register_admin_handlers
 from services.order_service import find_orders_pending_activation_alert
 
@@ -50,6 +51,7 @@ async def run_admin_bot():
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
+    register_error_handler(dp)
     register_admin_handlers(dp)
 
     asyncio.create_task(activation_alert_loop(admin_bot))
