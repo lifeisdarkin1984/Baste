@@ -14,8 +14,8 @@ class ResellerPackageStates(StatesGroup):
 
 
 class ResellerCategoryStates(StatesGroup):
-    entering_operator_name = State()
-    entering_title = State()
+    entering_operator_name = State()        # ساخت پوشه‌ی اصلی اپراتور (مثلاً ایرانسل)
+    entering_subcategory_title = State()    # ساخت زیرپوشه داخل اپراتور (مثلاً ماهانه/هفتگی)
 
 
 class ResellerDisputeStates(StatesGroup):
@@ -56,6 +56,10 @@ class SuperAdminResellerStates(StatesGroup):
     entering_commission_percent = State()
     entering_credit_limit = State()
     entering_order_prefix = State()
+
+
+class SuperAdminResellerEditStates(StatesGroup):
+    entering_new_commission_percent = State()   # ویرایش کمیسیون یک نماینده‌ی موجود
 
 
 class SuperAdminCryptoStates(StatesGroup):

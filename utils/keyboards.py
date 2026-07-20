@@ -3,7 +3,29 @@
 نیازمند Bot API >= 9.4 و aiogram >= 3.20 (فیلد style روی InlineKeyboardButton).
 رنگ‌ها: primary (آبی) / success (سبز) / danger (قرمز)
 """
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+)
+
+
+# ==========================================================================
+# کیبورد پایین صفحه (Reply Keyboard) برای مشتری — به‌جای دکمه‌ی شیشه‌ای توی چت.
+# متن دکمه‌ها عیناً به‌عنوان فیلتر F.text تو هندلرها استفاده می‌شه، پس این
+# ثابت‌ها رو عوض نکن مگر اینکه هندلر مربوطه رو هم آپدیت کنی.
+# ==========================================================================
+CUSTOMER_CATALOG_BUTTON_TEXT = "🛍 مشاهده کاتالوگ"
+CUSTOMER_SUPPORT_BUTTON_TEXT = "📞 پشتیبانی"
+
+
+def customer_main_reply_keyboard(has_support_contact: bool = True) -> ReplyKeyboardMarkup:
+    """کیبورد ثابت پایین صفحه‌ی مشتری. resize_keyboard کوچیکش می‌کنه که کل صفحه رو نگیره."""
+    rows = [[KeyboardButton(text=CUSTOMER_CATALOG_BUTTON_TEXT)]]
+    if has_support_contact:
+        rows.append([KeyboardButton(text=CUSTOMER_SUPPORT_BUTTON_TEXT)])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
 
 def catalog_button() -> InlineKeyboardMarkup:
@@ -89,7 +111,10 @@ def reseller_row_buttons(reseller_id: int, status: str) -> InlineKeyboardMarkup:
         toggle = InlineKeyboardButton(text="⏸ تعلیق", callback_data=f"reseller_toggle:{reseller_id}:suspended", style="danger")
     else:
         toggle = InlineKeyboardButton(text="▶️ فعال‌سازی", callback_data=f"reseller_toggle:{reseller_id}:active", style="success")
-    return InlineKeyboardMarkup(inline_keyboard=[[toggle]])
+    edit_commission = InlineKeyboardButton(
+        text="✏️ تغییر کمیسیون", callback_data=f"reseller_edit_commission:{reseller_id}", style="primary"
+    )
+    return InlineKeyboardMarkup(inline_keyboard=[[toggle], [edit_commission]])
 
 
 def admin_wallet_submenu() -> InlineKeyboardMarkup:
@@ -197,22 +222,35 @@ def back_to_reseller_menu_button() -> InlineKeyboardMarkup:
     ])
 
 
-# ---------- کاتالوگ ----------
+# ---------- کاتالوگ (ساختار پوشه‌ای: اپراتور -> زیرپوشه (ماهانه/هفتگی/...) -> بسته) ----------
 def catalog_submenu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 مشاهده کاتالوگ", callback_data="catalog:view", style="primary")],
-        [InlineKeyboardButton(text="➕ افزودن دسته‌بندی", callback_data="catalog:add_category", style="success")],
+        [InlineKeyboardButton(text="📁 افزودن اپراتور (پوشه اصلی)", callback_data="catalog:add_operator", style="success")],
+        [InlineKeyboardButton(text="📂 افزودن زیرپوشه (ماهانه/هفتگی/...)", callback_data="catalog:add_subcategory", style="success")],
         [InlineKeyboardButton(text="➕ افزودن بسته", callback_data="catalog:add_package", style="success")],
         [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:home", style="primary")],
     ])
 
 
-def category_pick_buttons(categories: list) -> InlineKeyboardMarkup:
+def operator_pick_buttons(operators: list, purpose: str) -> InlineKeyboardMarkup:
+    """purpose: 'sub' برای انتخاب اپراتور موقع ساخت زیرپوشه، 'pkg' برای انتخاب اپراتور موقع افزودن بسته."""
+    prefix = "catalog:pick_operator_for_sub" if purpose == "sub" else "catalog:pick_operator_for_pkg"
     rows = [
-        [InlineKeyboardButton(text=f"{c['operator_name']} - {c['title']}", callback_data=f"catalog:pick_category:{c['id']}", style="primary")]
-        for c in categories
+        [InlineKeyboardButton(text=f"📁 {op['operator_name']}", callback_data=f"{prefix}:{op['id']}", style="primary")]
+        for op in operators
     ]
     rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:catalog", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def category_pick_buttons(categories: list) -> InlineKeyboardMarkup:
+    """انتخاب زیرپوشه (مثلاً ماهانه/هفتگی) برای افزودن بسته داخلش."""
+    rows = [
+        [InlineKeyboardButton(text=f"📂 {c['title']}", callback_data=f"catalog:pick_category:{c['id']}", style="primary")]
+        for c in categories
+    ]
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data="catalog:add_package", style="primary")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
