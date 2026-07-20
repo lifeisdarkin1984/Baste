@@ -19,6 +19,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from core.encryption import decrypt_token
+from core.error_handler import register_error_handler
 from database.db import fetch_all
 from handlers.reseller import register_reseller_handlers
 from handlers.operator import register_operator_handlers
@@ -49,6 +50,7 @@ class DynamicBotManager:
         # پیام مربوط به کدام نماینده است (چون هر بات فقط برای یک نماینده است).
         dp.workflow_data["reseller_id"] = reseller_id
 
+        register_error_handler(dp)
         register_reseller_handlers(dp)
         register_operator_handlers(dp)
         register_customer_handlers(dp)
