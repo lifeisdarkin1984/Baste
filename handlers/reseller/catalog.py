@@ -3,9 +3,13 @@
 
 نکته‌ی مهم فاز ۳: قبلاً هیچ نقطه‌ی ورودی برای شروع «افزودن بسته» وجود نداشت
 (state entering_price هرگز از جایی set نمی‌شد) — یعنی نماینده اصلاً راهی
-برای ساختن کاتالوگ نداشت. این فایل آن نقطه‌ی ورود (افزودن دسته‌بندی + انتخاب
-دسته + وارد کردن نام بسته) را اضافه می‌کند و به state entering_price موجود
-وصل می‌شود.
+برای ساختن کاتالوگ نداشت. این فایل آن نقطه‌ی ورود را اضافه می‌کند.
+
+ساختار کاتالوگ به‌صورت پوشه‌ای دو سطحیه (با استفاده از parent_category_id
+موجود تو جدول categories):
+  اپراتور (پوشه اصلی، مثلاً «ایرانسل»، parent_category_id = NULL)
+    -> زیرپوشه (مثلاً «ماهانه» یا «هفتگی»، parent_category_id = آیدی اپراتور)
+        -> بسته‌ها (packages.category_id = آیدی زیرپوشه)
 """
 import uuid
 from decimal import Decimal, InvalidOperation
@@ -21,6 +25,7 @@ from utils.keyboards import (
     sanity_check_confirm_buttons,
     catalog_submenu,
     category_pick_buttons,
+    operator_pick_buttons,
     back_to_reseller_menu_button,
 )
 
@@ -37,50 +42,105 @@ async def catalog_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data == "catalog:view")
 async def view_catalog(callback: CallbackQuery, reseller_id: int):
-    categories = await fetch_all(
-        "SELECT id, operator_name, title FROM categories WHERE reseller_id = %s", (reseller_id,)
+    operators = await fetch_all(
+        "SELECT id, operator_name FROM categories WHERE reseller_id = %s AND parent_category_id IS NULL",
+        (reseller_id,),
     )
-    if not categories:
-        await callback.message.answer("هنوز هیچ دسته‌بندی‌ای اضافه نکرده‌اید.", reply_markup=back_to_reseller_menu_button())
+    if not operators:
+        await callback.message.answer(
+            "هنوز هیچ اپراتوری اضافه نکرده‌اید. اول از «📁 افزودن اپراتور» شروع کنید.",
+            reply_markup=back_to_reseller_menu_button(),
+        )
         await callback.answer()
         return
-    for c in categories:
-        packages = await fetch_all(
-            "SELECT name, sale_price, is_active FROM packages WHERE category_id = %s", (c["id"],)
+
+    for op in operators:
+        subcategories = await fetch_all(
+            "SELECT id, title FROM categories WHERE parent_category_id = %s", (op["id"],)
         )
-        if not packages:
-            text = f"📁 {c['operator_name']} - {c['title']}\n(بسته‌ای ثبت نشده)"
+        text = f"📁 {op['operator_name']}"
+        if not subcategories:
+            text += "\n  (هنوز زیرپوشه‌ای مثل ماهانه/هفتگی نداره)"
         else:
-            lines = [f"- {p['name']}: {p['sale_price']:,.0f} تومان {'✅' if p['is_active'] else '⛔️'}" for p in packages]
-            text = f"📁 {c['operator_name']} - {c['title']}\n" + "\n".join(lines)
+            for sub in subcategories:
+                packages = await fetch_all(
+                    "SELECT name, sale_price, is_active FROM packages WHERE category_id = %s", (sub["id"],)
+                )
+                text += f"\n  📂 {sub['title']}"
+                if not packages:
+                    text += "\n     (بسته‌ای ثبت نشده)"
+                else:
+                    for p in packages:
+                        mark = "✅" if p["is_active"] else "⛔️"
+                        text += f"\n     - {p['name']}: {p['sale_price']:,.0f} تومان {mark}"
         await callback.message.answer(text)
     await callback.answer()
 
 
-# ---------- افزودن دسته‌بندی ----------
-@router.callback_query(F.data == "catalog:add_category")
-async def start_add_category(callback: CallbackQuery, state: FSMContext):
+# ---------- افزودن اپراتور (پوشه اصلی) ----------
+@router.callback_query(F.data == "catalog:add_operator")
+async def start_add_operator(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ResellerCategoryStates.entering_operator_name)
     await callback.message.answer("نام اپراتور را وارد کنید (مثال: ایرانسل):\n(برای انصراف /cancel)")
     await callback.answer()
 
 
 @router.message(ResellerCategoryStates.entering_operator_name)
-async def receive_operator_name(message: Message, state: FSMContext):
-    await state.update_data(operator_name=message.text.strip())
-    await state.set_state(ResellerCategoryStates.entering_title)
-    await message.answer("عنوان دسته‌بندی را وارد کنید (مثال: هفتگی):")
-
-
-@router.message(ResellerCategoryStates.entering_title)
-async def receive_category_title_and_save(message: Message, state: FSMContext, reseller_id: int):
-    data = await state.get_data()
+async def receive_operator_name_and_save(message: Message, state: FSMContext, reseller_id: int):
+    operator_name = message.text.strip()
     await execute(
-        "INSERT INTO categories (reseller_id, operator_name, title) VALUES (%s, %s, %s)",
-        (reseller_id, data["operator_name"], message.text.strip()),
+        "INSERT INTO categories (reseller_id, operator_name, title, parent_category_id) VALUES (%s, %s, %s, NULL)",
+        (reseller_id, operator_name, operator_name),
     )
     await message.answer(
-        f"دسته‌بندی «{data['operator_name']} - {message.text.strip()}» ساخته شد ✅",
+        f"پوشه‌ی اپراتور «{operator_name}» ساخته شد ✅\n"
+        f"حالا از «📂 افزودن زیرپوشه» برای ساختن ماهانه/هفتگی و... داخلش استفاده کنید.",
+        reply_markup=catalog_submenu(),
+    )
+    await state.clear()
+
+
+# ---------- افزودن زیرپوشه (ماهانه/هفتگی/...) ----------
+@router.callback_query(F.data == "catalog:add_subcategory")
+async def start_add_subcategory(callback: CallbackQuery, reseller_id: int):
+    operators = await fetch_all(
+        "SELECT id, operator_name FROM categories WHERE reseller_id = %s AND parent_category_id IS NULL",
+        (reseller_id,),
+    )
+    if not operators:
+        await callback.message.answer(
+            "اول باید یک اپراتور (پوشه اصلی) بسازید.", reply_markup=catalog_submenu()
+        )
+        await callback.answer()
+        return
+    await callback.message.answer(
+        "زیرپوشه را برای کدام اپراتور می‌سازید؟", reply_markup=operator_pick_buttons(operators, purpose="sub")
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("catalog:pick_operator_for_sub:"))
+async def pick_operator_for_sub(callback: CallbackQuery, state: FSMContext):
+    operator_id = int(callback.data.split(":")[2])
+    operator = await fetch_one("SELECT operator_name FROM categories WHERE id = %s", (operator_id,))
+    await state.update_data(parent_operator_id=operator_id, operator_name=operator["operator_name"])
+    await state.set_state(ResellerCategoryStates.entering_subcategory_title)
+    await callback.message.answer(
+        f"عنوان زیرپوشه‌ی «{operator['operator_name']}» را وارد کنید (مثال: ماهانه یا هفتگی):\n(برای انصراف /cancel)"
+    )
+    await callback.answer()
+
+
+@router.message(ResellerCategoryStates.entering_subcategory_title)
+async def receive_subcategory_title_and_save(message: Message, state: FSMContext, reseller_id: int):
+    data = await state.get_data()
+    title = message.text.strip()
+    await execute(
+        "INSERT INTO categories (reseller_id, operator_name, title, parent_category_id) VALUES (%s, %s, %s, %s)",
+        (reseller_id, data["operator_name"], title, data["parent_operator_id"]),
+    )
+    await message.answer(
+        f"زیرپوشه‌ی «{data['operator_name']} / {title}» ساخته شد ✅",
         reply_markup=catalog_submenu(),
     )
     await state.clear()
@@ -89,16 +149,40 @@ async def receive_category_title_and_save(message: Message, state: FSMContext, r
 # ---------- افزودن بسته ----------
 @router.callback_query(F.data == "catalog:add_package")
 async def start_add_package(callback: CallbackQuery, reseller_id: int):
-    categories = await fetch_all(
-        "SELECT id, operator_name, title FROM categories WHERE reseller_id = %s", (reseller_id,)
+    operators = await fetch_all(
+        "SELECT id, operator_name FROM categories WHERE reseller_id = %s AND parent_category_id IS NULL",
+        (reseller_id,),
     )
-    if not categories:
+    if not operators:
         await callback.message.answer(
-            "اول باید یک دسته‌بندی بسازید.", reply_markup=catalog_submenu()
+            "اول باید یک اپراتور (پوشه اصلی) بسازید.", reply_markup=catalog_submenu()
         )
         await callback.answer()
         return
-    await callback.message.answer("دسته‌بندی این بسته را انتخاب کنید:", reply_markup=category_pick_buttons(categories))
+    await callback.message.answer(
+        "بسته را برای کدام اپراتور اضافه می‌کنید؟", reply_markup=operator_pick_buttons(operators, purpose="pkg")
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("catalog:pick_operator_for_pkg:"))
+async def pick_operator_for_pkg(callback: CallbackQuery):
+    operator_id = int(callback.data.split(":")[2])
+    subcategories = await fetch_all(
+        "SELECT id, title FROM categories WHERE parent_category_id = %s", (operator_id,)
+    )
+    if not subcategories:
+        operator = await fetch_one("SELECT operator_name FROM categories WHERE id = %s", (operator_id,))
+        await callback.message.answer(
+            f"اپراتور «{operator['operator_name']}» هنوز زیرپوشه‌ای (مثلاً ماهانه/هفتگی) نداره.\n"
+            f"اول از «📂 افزودن زیرپوشه» یکی بساز.",
+            reply_markup=catalog_submenu(),
+        )
+        await callback.answer()
+        return
+    await callback.message.answer(
+        "زیرپوشه (مثلاً ماهانه/هفتگی) این بسته را انتخاب کنید:", reply_markup=category_pick_buttons(subcategories)
+    )
     await callback.answer()
 
 
