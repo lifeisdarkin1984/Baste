@@ -14,6 +14,8 @@
           -> لیست محصولات شارژ
              -> جزئیات + دکمه‌ی «🔋 خرید این شارژ»
 """
+from decimal import Decimal
+
 from aiogram import Router, F
 from aiogram.types import Message
 
@@ -22,7 +24,7 @@ from aiogram.fsm.context import FSMContext
 
 from services.order_service import get_or_create_customer
 from services.charge_service import (
-    purchase_charge,
+    purchase_charge_bulk,
     ChargeCustomerBlacklistedError,
     ChargeInsufficientBalanceError,
     ChargeOutOfStockError,
@@ -33,6 +35,7 @@ from utils.keyboards import (
     customer_main_reply_keyboard,
     customer_folder_reply_keyboard,
     customer_charge_detail_keyboard,
+    customer_charge_quantity_keyboard,
     CUSTOMER_CHARGE_BUTTON_TEXT,
     CUSTOMER_BACK_BUTTON_TEXT,
     CUSTOMER_BACK_TO_MENU_BUTTON_TEXT,
@@ -201,10 +204,72 @@ async def handle_buy_charge_button(message: Message, reseller_id: int, state: FS
         await _back_to_main_menu(message, reseller_id, state)
         return
 
+    await state.set_state(CustomerChargeStates.entering_quantity)
+    await message.answer(
+        "چند عدد از این شارژ می‌خواهید بخرید؟ عدد را تایپ کنید (حداقل ۱):",
+        reply_markup=customer_charge_quantity_keyboard(),
+    )
+
+
+async def _show_product_detail(message: Message, state: FSMContext, package_id: int) -> bool:
+    """جزئیات محصول را دوباره نمایش می‌دهد (برای بازگشت از مرحله‌ی تعداد). موفقیت را برمی‌گرداند."""
+    product = await fetch_one(
+        "SELECT p.id, p.name, p.sale_price, c.operator_name, c.title "
+        "FROM packages p JOIN categories c ON p.category_id = c.id WHERE p.id = %s",
+        (package_id,),
+    )
+    if product is None:
+        return False
+    await state.set_state(CustomerChargeStates.product_selected)
+    await message.answer(
+        f"🔋 {product['operator_name']} - {product['title']}\n{product['name']}\n"
+        f"💰 {product['sale_price']:,.0f} تومان\n\n"
+        f"مبلغ از کیف‌پول شما کسر می‌شود و کد بلافاصله همین‌جا تحویل داده می‌شود.\n"
+        f"برای خرید، دکمه‌ی «{CUSTOMER_BUY_CHARGE_BUTTON_TEXT}» را بزنید.",
+        reply_markup=customer_charge_detail_keyboard(),
+    )
+    return True
+
+
+@router.message(CustomerChargeStates.entering_quantity, F.text == CUSTOMER_BACK_BUTTON_TEXT)
+async def handle_charge_quantity_back(message: Message, reseller_id: int, state: FSMContext):
+    data = await state.get_data()
+    package_id = data.get("selected_charge_package_id")
+    if package_id is None or not await _show_product_detail(message, state, package_id):
+        await _back_to_main_menu(message, reseller_id, state)
+
+
+@router.message(CustomerChargeStates.entering_quantity)
+async def handle_charge_quantity_input(message: Message, reseller_id: int, state: FSMContext):
+    data = await state.get_data()
+    package_id = data.get("selected_charge_package_id")
+    if package_id is None:
+        await _back_to_main_menu(message, reseller_id, state)
+        return
+
+    raw_text = (message.text or "").strip()
+    if not raw_text.isdigit() or int(raw_text) < 1:
+        await message.answer(
+            "لطفاً یک عدد صحیح مثبت (حداقل ۱) وارد کنید:",
+            reply_markup=customer_charge_quantity_keyboard(),
+        )
+        return
+    quantity = int(raw_text)
+
+    package = await fetch_one("SELECT sale_price FROM packages WHERE id = %s", (package_id,))
+    if package is None:
+        await message.answer("این شارژ دیگر موجود نیست.")
+        await _back_to_main_menu(message, reseller_id, state)
+        return
+
+    unit_price = Decimal(package["sale_price"])
+    total_price = unit_price * quantity
+    await message.answer(f"مبلغ کل برای {quantity} عدد: {total_price:,.0f} تومان\nدر حال پردازش خرید...")
+
     customer = await get_or_create_customer(reseller_id, message.from_user.id)
 
     try:
-        result = await purchase_charge(reseller_id, package_id, customer["id"])
+        result = await purchase_charge_bulk(reseller_id, package_id, customer["id"], quantity)
     except ChargeCustomerBlacklistedError:
         await message.answer("⛔️ امکان خرید برای شما وجود ندارد.")
         await state.clear()
@@ -215,29 +280,44 @@ async def handle_buy_charge_button(message: Message, reseller_id: int, state: FS
             f"لطفاً ابتدا از «{CUSTOMER_WALLET_BUTTON_TEXT}» کیف‌پولتان را شارژ کنید و دوباره تلاش کنید."
         )
         return
-    except ChargeOutOfStockError:
-        await message.answer("متأسفانه موجودی این شارژ در حال حاضر تمام شده است. لطفاً بعداً امتحان کنید.")
+    except ChargeOutOfStockError as e:
+        available = getattr(e, "available", None)
+        if not available:
+            await message.answer(
+                "متأسفانه موجودی این شارژ در حال حاضر تمام شده است. لطفاً بعداً امتحان کنید.",
+                reply_markup=customer_charge_quantity_keyboard(),
+            )
+        else:
+            await message.answer(
+                f"در حال حاضر فقط {available} عدد از این شارژ موجود است.\n"
+                f"لطفاً عددی کمتر یا مساوی {available} وارد کنید:",
+                reply_markup=customer_charge_quantity_keyboard(),
+            )
         return
 
-    order = result["order"]
-    code = result["code"]
+    orders = result["orders"]
+    total = result["total_price"]
     await state.clear()
     reseller = await fetch_one(
         "SELECT telegram_numeric_id, support_contact FROM resellers WHERE id = %s", (reseller_id,)
     )
     has_support = bool(reseller and reseller["support_contact"])
+
+    lines = [f"✅ خرید {quantity} عدد شارژ با موفقیت انجام شد.\nمبلغ کل: {total:,.0f} تومان"]
+    for i, order in enumerate(orders, start=1):
+        lines.append(f"{i}) شناسه سفارش: {order['order_code']}\n🎫 کد: {order['code']}")
+    lines.append(f"پشتیبانی: {reseller['support_contact'] or 'در دسترس نیست'}")
     await message.answer(
-        f"✅ خرید با موفقیت انجام شد.\nشناسه سفارش: {order['order_code']}\n\n"
-        f"🎫 کد شارژ شما:\n{code}\n\n"
-        f"پشتیبانی: {reseller['support_contact'] or 'در دسترس نیست'}",
+        "\n\n".join(lines),
         reply_markup=customer_main_reply_keyboard(has_support_contact=has_support),
     )
+
     if reseller and reseller["telegram_numeric_id"]:
         try:
             await message.bot.send_message(
                 reseller["telegram_numeric_id"],
-                f"🔋 فروش شارژ جدید ثبت شد.\nسفارش: {order['order_code']}\n"
-                f"مبلغ: {order['package_price']:,.0f} تومان (از کیف‌پول مشتری کسر و کد به‌صورت خودکار تحویل داده شد).",
+                f"🔋 فروش شارژ جدید ثبت شد.\nتعداد: {quantity}\n"
+                f"مبلغ کل: {total:,.0f} تومان (از کیف‌پول مشتری کسر و کدها به‌صورت خودکار تحویل داده شدند).",
             )
         except Exception:
             pass
