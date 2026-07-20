@@ -42,10 +42,24 @@ def get_pool() -> aiomysql.Pool:
 
 @asynccontextmanager
 async def acquire_conn():
-    """یک کانکشن از pool می‌گیرد (بدون تراکنش صریح)."""
+    """
+    یک کانکشن از pool می‌گیرد (بدون تراکنش صریح).
+
+    نکته‌ی مهم (رفع باگ): چون pool با autocommit=False ساخته شده، حتی یه
+    SELECT ساده هم به‌صورت ضمنی یه تراکنش REPEATABLE READ باز می‌کنه که
+    snapshot داده‌ها رو همون لحظه فریز می‌کنه. اگه این تراکنش قبل از برگردوندن
+    کانکشن به pool commit/rollback نشه، دفعه‌ی بعد که همون کانکشن از pool
+    دوباره استفاده بشه، هنوز تو همون تراکنش قدیمیه و داده‌ی جدیدی که کانکشن‌های
+    دیگه commit کردن رو نمی‌بینه (مثلاً سفارشی که همین الان INSERT شده، تو
+    fetch_one بعدی None برمی‌گشت). برای همین بعد از هر استفاده، commit()
+    می‌زنیم تا تراکنش ضمنی بسته بشه و دفعه‌ی بعد snapshot تازه بگیره.
+    """
     pool = get_pool()
     async with pool.acquire() as conn:
-        yield conn
+        try:
+            yield conn
+        finally:
+            await conn.commit()
 
 
 @asynccontextmanager
