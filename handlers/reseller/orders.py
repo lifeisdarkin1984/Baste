@@ -28,23 +28,76 @@ router = Router(name="reseller_orders")
 router.callback_query.middleware(OrderActionPermissionMiddleware())
 
 
+async def _notify_customer_wallet_topup_confirmed(bot, topup_id: int) -> None:
+    """
+    بعد از تأیید رسید افزایش موجودی، به خود مشتری هم پیام بده که رسیدش تأیید
+    شد و کیف‌پولش شارژ شد (قبلاً این اطلاع‌رسانی اصلاً وجود نداشت).
+    """
+    topup = await fetch_one(
+        "SELECT amount, customer_id FROM customer_wallet_topups WHERE id = %s", (topup_id,)
+    )
+    if not topup:
+        return
+    customer = await fetch_one(
+        "SELECT telegram_user_id, wallet_balance FROM customers WHERE id = %s", (topup["customer_id"],)
+    )
+    if not customer:
+        return
+    try:
+        await bot.send_message(
+            customer["telegram_user_id"],
+            f"✅ رسید افزایش موجودی شما توسط نماینده تأیید شد.\n"
+            f"مبلغ شارژشده: {topup['amount']:,.0f} تومان\n"
+            f"موجودی فعلی کیف‌پول: {customer['wallet_balance']:,.0f} تومان",
+        )
+    except Exception:
+        pass  # مثلاً مشتری ربات را بلاک کرده
+
+
 @router.callback_query(F.data == "rmenu:orders")
 async def list_pending_orders_cb(callback: CallbackQuery, reseller_id: int):
-    rows = await fetch_all(
-        "SELECT id, order_code, package_price, commission_amount, phone_number FROM orders "
-        "WHERE reseller_id = %s AND status = 'awaiting_receipt_review'",
+    # ۱. رسیدهایی که هنوز تأیید/رد نشدن
+    review_rows = await fetch_all(
+        "SELECT o.id, o.order_code, o.package_price, o.commission_amount, o.phone_number, "
+        "p.name AS package_name, c.operator_name, c.title AS category_title "
+        "FROM orders o "
+        "JOIN packages p ON o.package_id = p.id "
+        "JOIN categories c ON p.category_id = c.id "
+        "WHERE o.reseller_id = %s AND o.status = 'awaiting_receipt_review'",
         (reseller_id,),
     )
-    if not rows:
-        await callback.message.answer("سفارش در انتظار بررسی‌ای وجود ندارد.", reply_markup=orders_refresh_button())
+    # ۲. سفارش‌هایی که تأیید شدن (پرداخت کیف‌پولی یا رسید تأییدشده) ولی هنوز
+    # دستی فعال (فعال‌سازی روی خط مشتری) نشدن.
+    confirmed_rows = await fetch_all(
+        "SELECT o.id, o.order_code, o.package_price, o.phone_number, "
+        "p.name AS package_name, c.operator_name, c.title AS category_title "
+        "FROM orders o "
+        "JOIN packages p ON o.package_id = p.id "
+        "JOIN categories c ON p.category_id = c.id "
+        "WHERE o.reseller_id = %s AND o.status = 'confirmed' AND o.activated_at IS NULL",
+        (reseller_id,),
+    )
+
+    if not review_rows and not confirmed_rows:
+        await callback.message.answer("سفارشی در انتظار بررسی یا فعال‌سازی وجود ندارد.", reply_markup=orders_refresh_button())
         await callback.answer()
         return
-    for r in rows:
+
+    for r in review_rows:
         await callback.message.answer(
-            f"سفارش {r['order_code']} | قیمت بسته: {r['package_price']:,.0f} | "
-            f"کمیسیون: {r['commission_amount']:,.0f}\n"
+            f"🧾 سفارش {r['order_code']} (در انتظار بررسی رسید)\n"
+            f"بسته: {r['operator_name']} - {r['category_title']} / {r['package_name']}\n"
+            f"قیمت بسته: {r['package_price']:,.0f} | کمیسیون: {r['commission_amount']:,.0f}\n"
             f"شماره خط: {r['phone_number'] or 'ثبت نشده'}",
             reply_markup=order_review_buttons(r["id"]),
+        )
+    for r in confirmed_rows:
+        await callback.message.answer(
+            f"📦 سفارش {r['order_code']} (تأییدشده، منتظر فعال‌سازی دستی)\n"
+            f"بسته: {r['operator_name']} - {r['category_title']} / {r['package_name']}\n"
+            f"قیمت بسته: {r['package_price']:,.0f}\n"
+            f"شماره خط: {r['phone_number'] or 'ثبت نشده'}",
+            reply_markup=activate_order_button(r["id"]),
         )
     await callback.answer()
 
@@ -53,10 +106,18 @@ async def list_pending_orders_cb(callback: CallbackQuery, reseller_id: int):
 async def approve_receipt(callback: CallbackQuery):
     order_id = int(callback.data.split(":")[1])
     await confirm_order(order_id)
-    order = await fetch_one("SELECT phone_number FROM orders WHERE id = %s", (order_id,))
+    order = await fetch_one(
+        "SELECT o.phone_number, p.name AS package_name, c.operator_name, c.title AS category_title "
+        "FROM orders o JOIN packages p ON o.package_id = p.id JOIN categories c ON p.category_id = c.id "
+        "WHERE o.id = %s",
+        (order_id,),
+    )
     phone_line = f"\nشماره خط: {order['phone_number']}" if order and order["phone_number"] else ""
+    package_line = (
+        f"\nبسته: {order['operator_name']} - {order['category_title']} / {order['package_name']}" if order else ""
+    )
     await callback.message.answer(
-        f"رسید تأیید شد ✅.{phone_line}\nلطفاً بعد از فعال‌سازی دستی بسته، دکمه‌ی زیر را بزنید.",
+        f"رسید تأیید شد ✅.{package_line}{phone_line}\nلطفاً بعد از فعال‌سازی دستی بسته، دکمه‌ی زیر را بزنید.",
         reply_markup=activate_order_button(order_id),
     )
     await callback.answer()
@@ -112,11 +173,13 @@ async def confirm_wallet_topup(callback: CallbackQuery):
     except WalletTopupInsufficientCreditError as e:
         await notify_reseller_wallet_topup_insufficient_credit(callback.bot, e.reseller_id, e.topup_id)
         await notify_super_admin_wallet_topup_insufficient_credit(e.reseller_id, e.topup_id)
+        await _notify_customer_wallet_topup_confirmed(callback.bot, topup_id)
         await callback.message.answer(
             "کیف‌پول مشتری شارژ شد ✅ ولی کسر کمیسیون شما به‌خاطر کمبود اعتبار ناموفق بود؛ لطفاً کیف‌پول کمیسیون خود را شارژ کنید."
         )
         await callback.answer()
         return
+    await _notify_customer_wallet_topup_confirmed(callback.bot, topup_id)
     await callback.message.answer("افزایش موجودی کیف‌پول مشتری تأیید و اعمال شد ✅")
     await callback.answer()
 
