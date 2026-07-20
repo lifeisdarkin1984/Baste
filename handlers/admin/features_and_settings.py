@@ -10,20 +10,12 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
 from database.db import fetch_all
-from services.feature_flag_service import (
-    list_pending_features,
-    decide_feature,
-    set_bills_payment_enabled,
-    is_bills_payment_enabled,
-)
 from services.crypto_service import upsert_crypto_setting
 from services.blacklist_service import list_blacklist, add_to_blacklist
 from utils.states import SuperAdminCryptoStates, SuperAdminBlacklistStates, SuperAdminBroadcastStates
 from utils.keyboards import (
     admin_features_submenu,
-    feature_decision_buttons,
     blacklist_add_button,
-    bills_toggle_buttons,
     back_to_admin_menu_button,
 )
 
@@ -33,38 +25,6 @@ router = Router(name="admin_features_and_settings")
 @router.callback_query(F.data == "amenu:features")
 async def features_menu(callback: CallbackQuery):
     await callback.message.edit_text("⚙️ فیچرها و تنظیمات", reply_markup=admin_features_submenu())
-    await callback.answer()
-
-
-# ---------- فیچر شارژ/VPN ----------
-@router.callback_query(F.data == "amenu:features:pending")
-async def pending_features_cb(callback: CallbackQuery):
-    rows = await list_pending_features()
-    if not rows:
-        await callback.message.answer("درخواست فیچر در انتظاری وجود ندارد.", reply_markup=back_to_admin_menu_button())
-        await callback.answer()
-        return
-    for r in rows:
-        await callback.message.answer(
-            f"#{r['id']} | نماینده {r['reseller_id']} | فیچر: {r['feature']}",
-            reply_markup=feature_decision_buttons(r["id"]),
-        )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("feature_approve:"))
-async def approve_feature_cb(callback: CallbackQuery):
-    flag_id = int(callback.data.split(":")[1])
-    await decide_feature(flag_id, approve=True)
-    await callback.message.edit_text(f"فیچر #{flag_id} تأیید شد ✅")
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("feature_reject:"))
-async def reject_feature_cb(callback: CallbackQuery):
-    flag_id = int(callback.data.split(":")[1])
-    await decide_feature(flag_id, approve=False)
-    await callback.message.edit_text(f"فیچر #{flag_id} رد شد.")
     await callback.answer()
 
 
@@ -171,21 +131,3 @@ async def receive_broadcast_text_and_send(message: Message, state: FSMContext, b
             pass
     await message.answer(f"اطلاعیه برای {sent} نماینده ارسال شد.", reply_markup=back_to_admin_menu_button())
     await state.clear()
-
-
-# ---------- پرداخت قبوض (سراسری) ----------
-@router.callback_query(F.data == "amenu:features:bills")
-async def bills_status_cb(callback: CallbackQuery):
-    enabled = await is_bills_payment_enabled()
-    status_text = "فعال ✅" if enabled else "غیرفعال 🔴"
-    await callback.message.answer(f"وضعیت فعلی پرداخت قبوض: {status_text}", reply_markup=bills_toggle_buttons(enabled))
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("bills_set:"))
-async def bills_set_cb(callback: CallbackQuery):
-    value = callback.data.split(":")[1] == "on"
-    await set_bills_payment_enabled(value)
-    label = "فعال شد ✅" if value else "غیرفعال شد 🔴"
-    await callback.message.edit_text(f"قابلیت پرداخت قبوض برای کل پلتفرم {label}")
-    await callback.answer()
