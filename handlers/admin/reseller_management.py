@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 
 from core.encryption import encrypt_token
 from database.db import execute, fetch_all
-from utils.states import SuperAdminResellerStates
+from utils.states import SuperAdminResellerStates, SuperAdminResellerEditStates
 from utils.keyboards import (
     admin_main_menu,
     admin_resellers_submenu,
@@ -171,6 +171,49 @@ async def toggle_reseller_status(callback: CallbackQuery):
     label = "فعال شد ✅" if new_status == "active" else "تعلیق شد ⏸"
     await callback.message.edit_text(f"نماینده #{reseller_id} {label}\nبات آن ظرف ۳۰ ثانیه به‌روزرسانی می‌شود.")
     await callback.answer()
+
+
+# ---------- تغییر کمیسیون یک نماینده‌ی موجود ----------
+@router.callback_query(F.data.startswith("reseller_edit_commission:"))
+async def start_edit_commission(callback: CallbackQuery, state: FSMContext):
+    reseller_id = int(callback.data.split(":")[1])
+    rows = await fetch_all(
+        "SELECT id, bot_username, commission_percent FROM resellers WHERE id = %s", (reseller_id,)
+    )
+    if not rows:
+        await callback.answer("این نماینده پیدا نشد.", show_alert=True)
+        return
+    reseller = rows[0]
+    await state.update_data(edit_reseller_id=reseller_id)
+    await state.set_state(SuperAdminResellerEditStates.entering_new_commission_percent)
+    await callback.message.answer(
+        f"کمیسیون فعلی @{reseller['bot_username']}: {reseller['commission_percent']}٪\n"
+        f"درصد کمیسیون جدید را وارد کنید (مثال: 3.5):\n(برای انصراف /cancel)"
+    )
+    await callback.answer()
+
+
+@router.message(SuperAdminResellerEditStates.entering_new_commission_percent)
+async def receive_new_commission_and_save(message: Message, state: FSMContext):
+    try:
+        percent = Decimal(message.text.strip())
+    except InvalidOperation:
+        await message.answer("فقط عدد وارد کنید. مثال درست: 3.5")
+        return
+    if percent < 0 or percent > 100:
+        await message.answer("درصد کمیسیون باید بین 0 تا 100 باشد.")
+        return
+
+    data = await state.get_data()
+    reseller_id = data["edit_reseller_id"]
+    await execute(
+        "UPDATE resellers SET commission_percent = %s WHERE id = %s", (percent, reseller_id)
+    )
+    await message.answer(
+        f"کمیسیون نماینده #{reseller_id} به {percent}٪ تغییر کرد ✅",
+        reply_markup=admin_main_menu(),
+    )
+    await state.clear()
 
 
 # ---------- گزارش پلتفرم (روی همین فایل چون هندلر کوتاهیه) ----------
