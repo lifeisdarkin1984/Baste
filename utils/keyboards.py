@@ -16,7 +16,7 @@ from aiogram.types import (
 # متن دکمه‌ها عیناً به‌عنوان فیلتر F.text تو هندلرها استفاده می‌شه، پس این
 # ثابت‌ها رو عوض نکن مگر اینکه هندلر مربوطه رو هم آپدیت کنی.
 # ==========================================================================
-CUSTOMER_CATALOG_BUTTON_TEXT = "🛍 مشاهده کاتالوگ"
+CUSTOMER_CATALOG_BUTTON_TEXT = "🛒 خرید بسته"
 CUSTOMER_SUPPORT_BUTTON_TEXT = "📞 پشتیبانی"
 CUSTOMER_WALLET_BUTTON_TEXT = "💰 کیف پول من"
 CUSTOMER_BACK_BUTTON_TEXT = "⬅️ بازگشت"
@@ -50,6 +50,25 @@ def customer_package_detail_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=CUSTOMER_BUY_BUTTON_TEXT)],
+            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+CUSTOMER_SHARE_PHONE_BUTTON_TEXT = "📱 ارسال شماره تلفنم"
+
+
+def customer_phone_number_keyboard() -> ReplyKeyboardMarkup:
+    """
+    کیبورد مرحله‌ی وارد کردن شماره‌خط برای فعال‌سازی بسته: یا دکمه‌ی اشتراک
+    مخاطب تلگرام (request_contact) یا تایپ دستی شماره (چون ممکنه شماره‌ی
+    موردنظر برای شارژ، با شماره‌ی اکانت تلگرام مشتری فرق داشته باشه)، + بازگشت.
+    """
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=CUSTOMER_SHARE_PHONE_BUTTON_TEXT, request_contact=True)],
             [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)],
         ],
         resize_keyboard=True,

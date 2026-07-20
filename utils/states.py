@@ -57,6 +57,7 @@ class CustomerCatalogStates(StatesGroup):
     browsing_subcategories = State()  # لیست زیرپوشه‌ها (ماهانه/هفتگی/...) یک اپراتور خاص
     browsing_packages = State()       # لیست بسته‌های یک زیرپوشه خاص
     package_selected = State()        # یک بسته انتخاب شده، منتظر تأیید دکمه‌ی «خرید»
+    entering_phone_number = State()   # منتظر شماره‌خطی که بسته باید رویش فعال شود
 
 
 # ---------- افزایش موجودی کیف‌پول مشتری ----------
