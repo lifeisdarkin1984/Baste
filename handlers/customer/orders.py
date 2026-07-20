@@ -3,7 +3,7 @@
 خودکار از کیف‌پول (فیچر جدید طبق درخواست).
 
 ساختار ناوبری (همه با کیبورد پایین صفحه، نه inline):
-  🛍 مشاهده کاتالوگ
+  🛒 خرید بسته
     -> لیست اپراتورها (پوشه اصلی)
        -> لیست زیرپوشه‌ها (روزانه/هفتگی/ماهانه/...)
           -> لیست بسته‌ها
@@ -17,7 +17,7 @@
 from decimal import Decimal, InvalidOperation
 
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 
 from database.db import fetch_all, fetch_one, execute
@@ -45,6 +45,7 @@ from utils.keyboards import (
     customer_main_reply_keyboard,
     customer_folder_reply_keyboard,
     customer_package_detail_keyboard,
+    customer_phone_number_keyboard,
     activate_order_button,
     CUSTOMER_CATALOG_BUTTON_TEXT,
     CUSTOMER_SUPPORT_BUTTON_TEXT,
@@ -52,6 +53,7 @@ from utils.keyboards import (
     CUSTOMER_BACK_BUTTON_TEXT,
     CUSTOMER_BACK_TO_MENU_BUTTON_TEXT,
     CUSTOMER_BUY_BUTTON_TEXT,
+    CUSTOMER_SHARE_PHONE_BUTTON_TEXT,
 )
 
 router = Router(name="customer_orders")
@@ -233,8 +235,61 @@ async def handle_package_detail_back(message: Message, reseller_id: int, state: 
     )
 
 
+def _normalize_phone_number(raw: str) -> str | None:
+    """
+    یه شماره خط ایرانی رو نرمالایز می‌کنه (فقط رقم، با 0 شروع بشه، ۱۱ رقمی).
+    ورودی‌های +98912... یا 0098912... یا با فاصله/خط‌تیره هم پذیرفته می‌شن.
+    اگه معتبر نبود None برمی‌گردونه.
+    """
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if digits.startswith("0098"):
+        digits = "0" + digits[4:]
+    elif digits.startswith("98") and len(digits) == 12:
+        digits = "0" + digits[2:]
+    if len(digits) == 11 and digits.startswith("09"):
+        return digits
+    return None
+
+
 @router.message(CustomerCatalogStates.package_selected, F.text == CUSTOMER_BUY_BUTTON_TEXT)
 async def handle_buy_button(message: Message, reseller_id: int, state: FSMContext):
+    data = await state.get_data()
+    package_id = data.get("selected_package_id")
+    if package_id is None:
+        await _back_to_main_menu(message, reseller_id, state)
+        return
+
+    await state.set_state(CustomerCatalogStates.entering_phone_number)
+    await message.answer(
+        "شماره خطی که می‌خواید بسته روش فعال بشه رو وارد کنید (مثال: 09121234567) "
+        "یا با دکمه‌ی زیر شماره‌ی تلگرامتون رو بفرستید:",
+        reply_markup=customer_phone_number_keyboard(),
+    )
+
+
+@router.message(CustomerCatalogStates.entering_phone_number, F.text == CUSTOMER_BACK_BUTTON_TEXT)
+async def cancel_phone_number_entry(message: Message, reseller_id: int, state: FSMContext):
+    await state.set_state(CustomerCatalogStates.package_selected)
+    await message.answer("باشه، از خرید همین بسته منصرف نشدیم؛ دوباره می‌تونید بزنید:", reply_markup=customer_package_detail_keyboard())
+
+
+@router.message(CustomerCatalogStates.entering_phone_number, F.contact)
+async def receive_phone_number_contact(message: Message, reseller_id: int, state: FSMContext):
+    await _process_purchase(message, reseller_id, state, message.contact.phone_number)
+
+
+@router.message(CustomerCatalogStates.entering_phone_number, F.text)
+async def receive_phone_number_text(message: Message, reseller_id: int, state: FSMContext):
+    phone = _normalize_phone_number(message.text)
+    if phone is None:
+        await message.answer(
+            "شماره معتبر نیست. لطفاً یه شماره خط ۱۱ رقمی که با 09 شروع می‌شه بفرستید (مثال: 09121234567):"
+        )
+        return
+    await _process_purchase(message, reseller_id, state, phone)
+
+
+async def _process_purchase(message: Message, reseller_id: int, state: FSMContext, phone_number: str):
     data = await state.get_data()
     package_id = data.get("selected_package_id")
     if package_id is None:
@@ -245,7 +300,7 @@ async def handle_buy_button(message: Message, reseller_id: int, state: FSMContex
 
     # مرحله ۱: تلاش برای پرداخت خودکار از کیف‌پول مشتری
     try:
-        order = await create_order_paid_by_wallet(reseller_id, package_id, customer["id"])
+        order = await create_order_paid_by_wallet(reseller_id, package_id, customer["id"], phone_number)
     except CustomerBlacklistedError:
         await message.answer("⛔️ امکان ثبت سفارش برای شما وجود ندارد.")
         await state.clear()
@@ -257,17 +312,22 @@ async def handle_buy_button(message: Message, reseller_id: int, state: FSMContex
         reseller = await fetch_one(
             "SELECT telegram_numeric_id, support_contact FROM resellers WHERE id = %s", (reseller_id,)
         )
+        has_support = bool(reseller and reseller["support_contact"])
         await message.answer(
             f"✅ پرداخت از کیف‌پول شما با موفقیت انجام شد.\nشناسه سفارش: {order['order_code']}\n"
+            f"شماره خط: {phone_number}\n"
             f"سفارش شما تأیید شد و به‌زودی توسط نماینده فعال می‌شود.\n"
-            f"پشتیبانی: {reseller['support_contact'] or 'در دسترس نیست'}"
+            f"پشتیبانی: {reseller['support_contact'] or 'در دسترس نیست'}",
+            reply_markup=customer_main_reply_keyboard(has_support_contact=has_support),
         )
         if reseller and reseller["telegram_numeric_id"]:
             try:
                 await message.bot.send_message(
                     reseller["telegram_numeric_id"],
                     f"🛒 سفارش جدید {order['order_code']} با پرداخت خودکار از کیف‌پول مشتری ثبت شد "
-                    f"(مبلغ: {order['package_price']:,.0f} تومان).\nبعد از فعال‌سازی دستی بسته، دکمه‌ی زیر را بزنید.",
+                    f"(مبلغ: {order['package_price']:,.0f} تومان).\n"
+                    f"شماره خط برای فعال‌سازی: {phone_number}\n"
+                    f"بعد از فعال‌سازی دستی بسته، دکمه‌ی زیر را بزنید.",
                     reply_markup=activate_order_button(order["id"]),
                 )
             except Exception:
@@ -276,7 +336,7 @@ async def handle_buy_button(message: Message, reseller_id: int, state: FSMContex
 
     # مرحله ۲: موجودی کافی نبود -> فلوی عادی رسید
     try:
-        order = await create_order(reseller_id, package_id, customer["id"])
+        order = await create_order(reseller_id, package_id, customer["id"], phone_number)
     except CustomerBlacklistedError:
         await message.answer("⛔️ امکان ثبت سفارش برای شما وجود ندارد.")
         await state.clear()
@@ -310,11 +370,13 @@ async def handle_buy_button(message: Message, reseller_id: int, state: FSMContex
     await message.answer(
         f"موجودی کیف‌پول شما کافی نیست، پس سفارش با روش رسیدی ثبت شد ✅\n"
         f"شناسه سفارش: {order['order_code']}\n"
+        f"شماره خط: {phone_number}\n"
         f"مبلغ قابل پرداخت: {order['package_price']:,.0f} تومان\n\n"
         f"{payment_info}\n\n"
         f"اگر کد تخفیف دارید، با فرمت زیر ارسال کنید:\n/discount CODE\n\n"
         f"بعد از پرداخت، تصویر رسید را همینجا ارسال کنید.\n"
-        f"پشتیبانی: {reseller['support_contact'] or 'در دسترس نیست'}"
+        f"پشتیبانی: {reseller['support_contact'] or 'در دسترس نیست'}",
+        reply_markup=ReplyKeyboardRemove(),
     )
 
 
