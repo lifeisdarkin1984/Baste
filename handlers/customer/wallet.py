@@ -128,12 +128,14 @@ async def receive_topup_receipt(message: Message, reseller_id: int, state: FSMCo
     await attach_topup_receipt(topup_id, receipt_file_id)
 
     reseller = await fetch_one(
-        "SELECT telegram_numeric_id FROM resellers WHERE id = %s", (reseller_id,)
-    )
-    await message.answer(
-        "رسید دریافت شد ✅ درخواست افزایش موجودی برای تأیید نماینده ارسال شد.",
+        "SELECT telegram_numeric_id, support_contact FROM resellers WHERE id = %s", (reseller_id,)
     )
     await state.clear()
+    has_support = bool(reseller and reseller["support_contact"])
+    await message.answer(
+        "رسید دریافت شد ✅ درخواست افزایش موجودی برای تأیید نماینده ارسال شد.",
+        reply_markup=customer_main_reply_keyboard(has_support_contact=has_support),
+    )
 
     if reseller and reseller["telegram_numeric_id"]:
         try:

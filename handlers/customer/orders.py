@@ -342,7 +342,7 @@ async def apply_discount_code(message: Message, state: FSMContext, reseller_id: 
 
 
 @router.message(CustomerOrderStates.waiting_receipt, F.photo)
-async def receive_receipt(message: Message, state: FSMContext):
+async def receive_receipt(message: Message, state: FSMContext, reseller_id: int):
     data = await state.get_data()
     order_id = data.get("order_id")
     receipt_file_id = message.photo[-1].file_id
@@ -357,14 +357,20 @@ async def receive_receipt(message: Message, state: FSMContext):
     except OrderInsufficientCreditError as e:
         await notify_reseller_insufficient_credit(message.bot, e.reseller_id, e.order_code)
         await notify_super_admin_insufficient_credit(e.reseller_id, e.order_code)
+        await state.clear()
+        reseller = await fetch_one("SELECT support_contact FROM resellers WHERE id = %s", (reseller_id,))
+        has_support = bool(reseller and reseller["support_contact"])
         await message.answer(
             "رسید شما دریافت شد، ولی پردازش سفارش به‌طور موقت با تأخیر مواجه شده. "
-            "به‌زودی توسط نماینده پیگیری می‌شود."
+            "به‌زودی توسط نماینده پیگیری می‌شود.",
+            reply_markup=customer_main_reply_keyboard(has_support_contact=has_support),
         )
-        await state.clear()
         return
 
-    await message.answer(
-        f"رسید دریافت شد ✅\nسفارش {order['order_code']} در انتظار بررسی نماینده است."
-    )
     await state.clear()
+    reseller = await fetch_one("SELECT support_contact FROM resellers WHERE id = %s", (reseller_id,))
+    has_support = bool(reseller and reseller["support_contact"])
+    await message.answer(
+        f"رسید دریافت شد ✅\nسفارش {order['order_code']} در انتظار بررسی نماینده است.",
+        reply_markup=customer_main_reply_keyboard(has_support_contact=has_support),
+    )
