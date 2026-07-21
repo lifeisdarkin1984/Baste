@@ -14,6 +14,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import BotCommand
 
 from config import Config
 from database.db import init_pool, close_pool
@@ -54,6 +55,11 @@ async def run_admin_bot():
     dp = Dispatcher()
     register_error_handler(dp)
     register_admin_handlers(dp)
+
+    await admin_bot.set_my_commands([
+        BotCommand(command="start", description="شروع / منوی اصلی"),
+        BotCommand(command="cancel", description="لغو عملیات فعلی"),
+    ])
 
     asyncio.create_task(activation_alert_loop(admin_bot))
     await dp.start_polling(admin_bot, handle_signals=False)
