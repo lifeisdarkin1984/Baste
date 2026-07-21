@@ -330,6 +330,79 @@ def catalog_submenu(catalog_type: str = "package") -> InlineKeyboardMarkup:
     ])
 
 
+# ---------- مدیریت/ویرایش/حذف اپراتور، زیرپوشه، محصول ----------
+def catalog_manage_operator_list_buttons(operators: list, catalog_type: str) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"📁 {op['operator_name']}", callback_data=f"catalog:manage_op:{catalog_type}:{op['id']}", style="primary")]
+        for op in operators
+    ]
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:menu:{catalog_type}", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def catalog_manage_operator_detail_buttons(catalog_type: str, operator_id: int, subcategories: list) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="✏️ ویرایش نام", callback_data=f"catalog:edit_op_name:{catalog_type}:{operator_id}", style="primary"),
+            InlineKeyboardButton(text="🗑 حذف", callback_data=f"catalog:del_op:{catalog_type}:{operator_id}", style="danger"),
+        ],
+    ]
+    for sub in subcategories:
+        rows.append([InlineKeyboardButton(text=f"📂 {sub['title']}", callback_data=f"catalog:manage_sub:{catalog_type}:{sub['id']}", style="primary")])
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:manage:{catalog_type}", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def catalog_manage_subcategory_detail_buttons(catalog_type: str, operator_id: int, subcategory_id: int, products: list) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="✏️ ویرایش عنوان", callback_data=f"catalog:edit_sub_title:{catalog_type}:{subcategory_id}", style="primary"),
+            InlineKeyboardButton(text="🗑 حذف", callback_data=f"catalog:del_sub:{catalog_type}:{subcategory_id}", style="danger"),
+        ],
+    ]
+    for p in products:
+        mark = "✅" if p["is_active"] else "⛔️"
+        rows.append([InlineKeyboardButton(text=f"{mark} {p['name']}", callback_data=f"catalog:manage_pkg:{catalog_type}:{p['id']}", style="primary")])
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:manage_op:{catalog_type}:{operator_id}", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def catalog_manage_package_detail_buttons(catalog_type: str, subcategory_id: int, package_id: int, is_active: bool) -> InlineKeyboardMarkup:
+    toggle_text = "⛔️ غیرفعال کردن" if is_active else "✅ فعال کردن"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✏️ ویرایش نام", callback_data=f"catalog:edit_pkg_name:{catalog_type}:{package_id}", style="primary"),
+            InlineKeyboardButton(text="✏️ ویرایش قیمت فروش", callback_data=f"catalog:edit_pkg_price:{catalog_type}:{package_id}", style="primary"),
+        ],
+        [
+            InlineKeyboardButton(text="✏️ ویرایش قیمت خرید", callback_data=f"catalog:edit_pkg_cost:{catalog_type}:{package_id}", style="primary"),
+            InlineKeyboardButton(text=toggle_text, callback_data=f"catalog:toggle_pkg:{catalog_type}:{package_id}", style=("danger" if is_active else "success")),
+        ],
+        [InlineKeyboardButton(text="🗑 حذف", callback_data=f"catalog:del_pkg:{catalog_type}:{package_id}", style="danger")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:manage_sub:{catalog_type}:{subcategory_id}", style="primary")],
+    ])
+
+
+def catalog_delete_confirm_buttons(catalog_type: str, target: str, target_id: int) -> InlineKeyboardMarkup:
+    """target: 'op' / 'sub' / 'pkg'"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ بله، حذف کن", callback_data=f"catalog:del_{target}_yes:{catalog_type}:{target_id}", style="danger"),
+            InlineKeyboardButton(text="❌ انصراف", callback_data=f"catalog:del_{target}_no:{catalog_type}:{target_id}", style="primary"),
+        ],
+    ])
+
+
+def package_edit_price_confirm_buttons(token: str) -> InlineKeyboardMarkup:
+    """تأیید صریح نماینده بعد از هشدار قیمت غیرمنطقی، مخصوص فلوی ویرایش قیمت."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ بله، قیمت درست است", callback_data=f"pkgedit_price_confirm:{token}", style="success"),
+            InlineKeyboardButton(text="✏️ اصلاح قیمت", callback_data=f"pkgedit_price_edit:{token}", style="danger"),
+        ],
+    ])
+
+
 def operator_pick_buttons(operators: list, purpose: str, catalog_type: str = "package") -> InlineKeyboardMarkup:
     """purpose: 'sub' برای انتخاب اپراتور موقع ساخت زیرپوشه، 'pkg' برای انتخاب اپراتور موقع افزودن بسته/محصول."""
     prefix = "catalog:pick_operator_for_sub" if purpose == "sub" else "catalog:pick_operator_for_pkg"
@@ -349,76 +422,6 @@ def category_pick_buttons(categories: list, catalog_type: str = "package") -> In
     ]
     rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:add_package:{catalog_type}", style="primary")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-# ==========================================================================
-# مدیریت/ویرایش/حذف پوشه‌ها و محصولات (بخش جدید طبق درخواست).
-# قرارداد callback_data: catalog:<action>:<catalog_type>:<id>
-# ==========================================================================
-def catalog_manage_operator_pick_buttons(operators: list, catalog_type: str) -> InlineKeyboardMarkup:
-    """انتخاب اپراتور برای ورود به صفحه‌ی مدیریت (ویرایش/حذف)."""
-    rows = [
-        [InlineKeyboardButton(text=f"📁 {op['operator_name']}", callback_data=f"catalog:manage_op:{catalog_type}:{op['id']}", style="primary")]
-        for op in operators
-    ]
-    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:menu:{catalog_type}", style="primary")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def catalog_operator_manage_buttons(catalog_type: str, operator_id: int, subcategories: list) -> InlineKeyboardMarkup:
-    """صفحه‌ی مدیریت یک اپراتور: ویرایش نام/حذف + لیست زیرپوشه‌هاش برای مدیریت هرکدوم."""
-    rows = [
-        [
-            InlineKeyboardButton(text="✏️ ویرایش", callback_data=f"catalog:edit_op:{catalog_type}:{operator_id}", style="primary"),
-            InlineKeyboardButton(text="🗑 حذف", callback_data=f"catalog:del_op:{catalog_type}:{operator_id}", style="danger"),
-        ],
-    ]
-    for sub in subcategories:
-        rows.append([InlineKeyboardButton(text=f"📂 {sub['title']}", callback_data=f"catalog:manage_sub:{catalog_type}:{sub['id']}", style="primary")])
-    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:manage:{catalog_type}", style="primary")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def catalog_subcategory_manage_buttons(catalog_type: str, sub_id: int, operator_id: int, packages: list) -> InlineKeyboardMarkup:
-    """صفحه‌ی مدیریت یک زیرپوشه: ویرایش عنوان/حذف + لیست محصولاتش برای مدیریت هرکدوم."""
-    rows = [
-        [
-            InlineKeyboardButton(text="✏️ ویرایش", callback_data=f"catalog:edit_sub:{catalog_type}:{sub_id}", style="primary"),
-            InlineKeyboardButton(text="🗑 حذف", callback_data=f"catalog:del_sub:{catalog_type}:{sub_id}", style="danger"),
-        ],
-    ]
-    for p in packages:
-        mark = "✅" if p["is_active"] else "⛔️"
-        rows.append([InlineKeyboardButton(text=f"{mark} {p['name']}", callback_data=f"catalog:manage_pkg:{catalog_type}:{p['id']}", style="primary")])
-    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:manage_op:{catalog_type}:{operator_id}", style="primary")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def catalog_package_manage_buttons(catalog_type: str, package_id: int, sub_id: int, is_active: bool) -> InlineKeyboardMarkup:
-    """صفحه‌ی مدیریت یک محصول: ویرایش نام/قیمت فروش/قیمت خرید + فعال‌سازی/غیرفعال‌سازی + حذف."""
-    toggle = InlineKeyboardButton(
-        text=("⛔️ غیرفعال کردن" if is_active else "✅ فعال‌سازی"),
-        callback_data=f"catalog:toggle_pkg:{catalog_type}:{package_id}",
-        style=("danger" if is_active else "success"),
-    )
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ ویرایش نام", callback_data=f"catalog:edit_pkg_name:{catalog_type}:{package_id}", style="primary")],
-        [InlineKeyboardButton(text="✏️ ویرایش قیمت فروش", callback_data=f"catalog:edit_pkg_price:{catalog_type}:{package_id}", style="primary")],
-        [InlineKeyboardButton(text="✏️ ویرایش قیمت خرید", callback_data=f"catalog:edit_pkg_cost:{catalog_type}:{package_id}", style="primary")],
-        [toggle],
-        [InlineKeyboardButton(text="🗑 حذف", callback_data=f"catalog:del_pkg:{catalog_type}:{package_id}", style="danger")],
-        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:manage_sub:{catalog_type}:{sub_id}", style="primary")],
-    ])
-
-
-def catalog_delete_confirm_buttons(kind: str, catalog_type: str, item_id: int) -> InlineKeyboardMarkup:
-    """kind: 'op' / 'sub' / 'pkg' — تأیید نهایی حذف با نمایش شمارش قبلش."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ بله، حذف کن", callback_data=f"catalog:delyes:{kind}:{catalog_type}:{item_id}", style="danger"),
-            InlineKeyboardButton(text="❌ انصراف", callback_data=f"catalog:delno:{kind}:{catalog_type}:{item_id}", style="primary"),
-        ],
-    ])
 
 
 # ---------- سفارش‌ها ----------
