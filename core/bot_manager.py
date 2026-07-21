@@ -67,6 +67,8 @@ class DynamicBotManager:
         bot = Bot(token=raw_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         dp = await self._build_dispatcher_for_reseller(reseller_id)
 
+        # scope پیش‌فرض (بدون scope خاص) چون این بات هم برای صاحب‌نماینده/اپراتور
+        # هم برای مشتری‌هاست و نیازی به فرق گذاشتن بین‌شون نیست.
         await bot.set_my_commands([
             BotCommand(command="start", description="شروع / منوی اصلی"),
             BotCommand(command="cancel", description="لغو عملیات فعلی"),
