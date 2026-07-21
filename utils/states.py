@@ -18,6 +18,16 @@ class ResellerCategoryStates(StatesGroup):
     entering_subcategory_title = State()    # ساخت زیرپوشه داخل اپراتور (مثلاً ماهانه/هفتگی)
 
 
+# ---------- ویرایش پوشه/زیرپوشه/محصول کاتالوگ (بخش جدید طبق درخواست) ----------
+class ResellerCatalogEditStates(StatesGroup):
+    editing_operator_name = State()             # ویرایش نام اپراتور (operator_name + title با هم)
+    editing_subcategory_title = State()         # ویرایش عنوان زیرپوشه
+    editing_package_name = State()              # ویرایش نام بسته/محصول
+    editing_package_price = State()             # ویرایش قیمت فروش
+    editing_package_cost = State()              # ویرایش قیمت خرید/تمام‌شده
+    confirming_suspicious_edit_price = State()  # هشدار Sanity Check موقع ویرایش قیمت
+
+
 # ---------- مدیریت موجودی کد شارژ توسط نماینده ----------
 class ResellerChargeCodeStates(StatesGroup):
     entering_codes = State()   # افزودن کد(های) شارژ، یکی در هر خط، برای یک محصول مشخص

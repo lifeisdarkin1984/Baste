@@ -25,26 +25,26 @@ CUSTOMER_TOPUP_BUTTON_TEXT = "💳 افزایش موجودی"
 CUSTOMER_TOPUP_CARD_BUTTON_TEXT = "💳 کارت‌به‌کارت"
 CUSTOMER_TOPUP_ZARINPAL_BUTTON_TEXT = "🌐 زرین‌پال"
 CUSTOMER_BUY_BUTTON_TEXT = "🛒 خرید این بسته"
-CUSTOMER_CHARGE_BUTTON_TEXT = "🔋 خرید شارژ سطح"
+CUSTOMER_CHARGE_BUTTON_TEXT = "🔋 خرید کارت شارژ"
 CUSTOMER_BUY_CHARGE_BUTTON_TEXT = "🔋 خرید این شارژ"
 
 
 def customer_main_reply_keyboard(has_support_contact: bool = True) -> ReplyKeyboardMarkup:
     """کیبورد ثابت پایین صفحه‌ی مشتری. resize_keyboard کوچیکش می‌کنه که کل صفحه رو نگیره."""
     rows = [
-        [KeyboardButton(text=CUSTOMER_CATALOG_BUTTON_TEXT)],
-        [KeyboardButton(text=CUSTOMER_CHARGE_BUTTON_TEXT)],
-        [KeyboardButton(text=CUSTOMER_WALLET_BUTTON_TEXT)],
+        [KeyboardButton(text=CUSTOMER_CATALOG_BUTTON_TEXT, style="primary")],
+        [KeyboardButton(text=CUSTOMER_CHARGE_BUTTON_TEXT, style="primary")],
+        [KeyboardButton(text=CUSTOMER_WALLET_BUTTON_TEXT, style="success")],
     ]
     if has_support_contact:
-        rows.append([KeyboardButton(text=CUSTOMER_SUPPORT_BUTTON_TEXT)])
+        rows.append([KeyboardButton(text=CUSTOMER_SUPPORT_BUTTON_TEXT, style="primary")])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
 
 def customer_folder_reply_keyboard(item_names: list[str], back_text: str = CUSTOMER_BACK_TO_MENU_BUTTON_TEXT) -> ReplyKeyboardMarkup:
     """کیبورد پایین صفحه برای نمایش لیست پوشه/زیرپوشه/بسته به‌صورت دکمه‌ی متنی، یکی در هر ردیف."""
-    rows = [[KeyboardButton(text=name)] for name in item_names]
-    rows.append([KeyboardButton(text=back_text)])
+    rows = [[KeyboardButton(text=name, style="primary")] for name in item_names]
+    rows.append([KeyboardButton(text=back_text, style="danger")])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
 
@@ -52,8 +52,8 @@ def customer_package_detail_keyboard() -> ReplyKeyboardMarkup:
     """کیبورد پایین صفحه بعد از انتخاب یک بسته‌ی مشخص: دکمه‌ی متنی «خرید» + بازگشت."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=CUSTOMER_BUY_BUTTON_TEXT)],
-            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)],
+            [KeyboardButton(text=CUSTOMER_BUY_BUTTON_TEXT, style="success")],
+            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT, style="danger")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -64,8 +64,8 @@ def customer_charge_detail_keyboard() -> ReplyKeyboardMarkup:
     """کیبورد پایین صفحه بعد از انتخاب یک شارژ سطح مشخص: دکمه‌ی متنی «خرید» + بازگشت."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=CUSTOMER_BUY_CHARGE_BUTTON_TEXT)],
-            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)],
+            [KeyboardButton(text=CUSTOMER_BUY_CHARGE_BUTTON_TEXT, style="success")],
+            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT, style="danger")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -94,8 +94,8 @@ def customer_phone_number_keyboard() -> ReplyKeyboardMarkup:
     """
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=CUSTOMER_SHARE_PHONE_BUTTON_TEXT, request_contact=True)],
-            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)],
+            [KeyboardButton(text=CUSTOMER_SHARE_PHONE_BUTTON_TEXT, request_contact=True, style="primary")],
+            [KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT, style="danger")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -105,8 +105,8 @@ def customer_phone_number_keyboard() -> ReplyKeyboardMarkup:
 def customer_wallet_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=CUSTOMER_TOPUP_BUTTON_TEXT)],
-            [KeyboardButton(text=CUSTOMER_BACK_TO_MENU_BUTTON_TEXT)],
+            [KeyboardButton(text=CUSTOMER_TOPUP_BUTTON_TEXT, style="success")],
+            [KeyboardButton(text=CUSTOMER_BACK_TO_MENU_BUTTON_TEXT, style="danger")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -116,10 +116,10 @@ def customer_wallet_menu_keyboard() -> ReplyKeyboardMarkup:
 def customer_topup_method_keyboard(has_card: bool, has_zarinpal: bool) -> ReplyKeyboardMarkup:
     rows = []
     if has_card:
-        rows.append([KeyboardButton(text=CUSTOMER_TOPUP_CARD_BUTTON_TEXT)])
+        rows.append([KeyboardButton(text=CUSTOMER_TOPUP_CARD_BUTTON_TEXT, style="primary")])
     if has_zarinpal:
-        rows.append([KeyboardButton(text=CUSTOMER_TOPUP_ZARINPAL_BUTTON_TEXT)])
-    rows.append([KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT)])
+        rows.append([KeyboardButton(text=CUSTOMER_TOPUP_ZARINPAL_BUTTON_TEXT, style="primary")])
+    rows.append([KeyboardButton(text=CUSTOMER_BACK_BUTTON_TEXT, style="danger")])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
 
@@ -325,6 +325,7 @@ def catalog_submenu(catalog_type: str = "package") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="📁 افزودن اپراتور (پوشه اصلی)", callback_data=f"catalog:add_operator:{catalog_type}", style="success")],
         [InlineKeyboardButton(text="📂 افزودن زیرپوشه (ماهانه/هفتگی/...)", callback_data=f"catalog:add_subcategory:{catalog_type}", style="success")],
         [InlineKeyboardButton(text=add_item_text, callback_data=f"catalog:add_package:{catalog_type}", style="success")],
+        [InlineKeyboardButton(text="📋 مدیریت/ویرایش پوشه‌ها", callback_data=f"catalog:manage:{catalog_type}", style="primary")],
         [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="rmenu:catalog", style="primary")],
     ])
 
@@ -348,6 +349,76 @@ def category_pick_buttons(categories: list, catalog_type: str = "package") -> In
     ]
     rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:add_package:{catalog_type}", style="primary")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ==========================================================================
+# مدیریت/ویرایش/حذف پوشه‌ها و محصولات (بخش جدید طبق درخواست).
+# قرارداد callback_data: catalog:<action>:<catalog_type>:<id>
+# ==========================================================================
+def catalog_manage_operator_pick_buttons(operators: list, catalog_type: str) -> InlineKeyboardMarkup:
+    """انتخاب اپراتور برای ورود به صفحه‌ی مدیریت (ویرایش/حذف)."""
+    rows = [
+        [InlineKeyboardButton(text=f"📁 {op['operator_name']}", callback_data=f"catalog:manage_op:{catalog_type}:{op['id']}", style="primary")]
+        for op in operators
+    ]
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:menu:{catalog_type}", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def catalog_operator_manage_buttons(catalog_type: str, operator_id: int, subcategories: list) -> InlineKeyboardMarkup:
+    """صفحه‌ی مدیریت یک اپراتور: ویرایش نام/حذف + لیست زیرپوشه‌هاش برای مدیریت هرکدوم."""
+    rows = [
+        [
+            InlineKeyboardButton(text="✏️ ویرایش", callback_data=f"catalog:edit_op:{catalog_type}:{operator_id}", style="primary"),
+            InlineKeyboardButton(text="🗑 حذف", callback_data=f"catalog:del_op:{catalog_type}:{operator_id}", style="danger"),
+        ],
+    ]
+    for sub in subcategories:
+        rows.append([InlineKeyboardButton(text=f"📂 {sub['title']}", callback_data=f"catalog:manage_sub:{catalog_type}:{sub['id']}", style="primary")])
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:manage:{catalog_type}", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def catalog_subcategory_manage_buttons(catalog_type: str, sub_id: int, operator_id: int, packages: list) -> InlineKeyboardMarkup:
+    """صفحه‌ی مدیریت یک زیرپوشه: ویرایش عنوان/حذف + لیست محصولاتش برای مدیریت هرکدوم."""
+    rows = [
+        [
+            InlineKeyboardButton(text="✏️ ویرایش", callback_data=f"catalog:edit_sub:{catalog_type}:{sub_id}", style="primary"),
+            InlineKeyboardButton(text="🗑 حذف", callback_data=f"catalog:del_sub:{catalog_type}:{sub_id}", style="danger"),
+        ],
+    ]
+    for p in packages:
+        mark = "✅" if p["is_active"] else "⛔️"
+        rows.append([InlineKeyboardButton(text=f"{mark} {p['name']}", callback_data=f"catalog:manage_pkg:{catalog_type}:{p['id']}", style="primary")])
+    rows.append([InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:manage_op:{catalog_type}:{operator_id}", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def catalog_package_manage_buttons(catalog_type: str, package_id: int, sub_id: int, is_active: bool) -> InlineKeyboardMarkup:
+    """صفحه‌ی مدیریت یک محصول: ویرایش نام/قیمت فروش/قیمت خرید + فعال‌سازی/غیرفعال‌سازی + حذف."""
+    toggle = InlineKeyboardButton(
+        text=("⛔️ غیرفعال کردن" if is_active else "✅ فعال‌سازی"),
+        callback_data=f"catalog:toggle_pkg:{catalog_type}:{package_id}",
+        style=("danger" if is_active else "success"),
+    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ ویرایش نام", callback_data=f"catalog:edit_pkg_name:{catalog_type}:{package_id}", style="primary")],
+        [InlineKeyboardButton(text="✏️ ویرایش قیمت فروش", callback_data=f"catalog:edit_pkg_price:{catalog_type}:{package_id}", style="primary")],
+        [InlineKeyboardButton(text="✏️ ویرایش قیمت خرید", callback_data=f"catalog:edit_pkg_cost:{catalog_type}:{package_id}", style="primary")],
+        [toggle],
+        [InlineKeyboardButton(text="🗑 حذف", callback_data=f"catalog:del_pkg:{catalog_type}:{package_id}", style="danger")],
+        [InlineKeyboardButton(text="⬅️ بازگشت", callback_data=f"catalog:manage_sub:{catalog_type}:{sub_id}", style="primary")],
+    ])
+
+
+def catalog_delete_confirm_buttons(kind: str, catalog_type: str, item_id: int) -> InlineKeyboardMarkup:
+    """kind: 'op' / 'sub' / 'pkg' — تأیید نهایی حذف با نمایش شمارش قبلش."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ بله، حذف کن", callback_data=f"catalog:delyes:{kind}:{catalog_type}:{item_id}", style="danger"),
+            InlineKeyboardButton(text="❌ انصراف", callback_data=f"catalog:delno:{kind}:{catalog_type}:{item_id}", style="primary"),
+        ],
+    ])
 
 
 # ---------- سفارش‌ها ----------
