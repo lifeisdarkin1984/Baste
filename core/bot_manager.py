@@ -17,6 +17,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import BotCommand
 
 from core.encryption import decrypt_token
 from core.error_handler import register_error_handler
@@ -65,6 +66,11 @@ class DynamicBotManager:
         raw_token = decrypt_token(reseller_row["bot_token_encrypted"])
         bot = Bot(token=raw_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         dp = await self._build_dispatcher_for_reseller(reseller_id)
+
+        await bot.set_my_commands([
+            BotCommand(command="start", description="شروع / منوی اصلی"),
+            BotCommand(command="cancel", description="لغو عملیات فعلی"),
+        ])
 
         async def _run():
             try:
