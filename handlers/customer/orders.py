@@ -59,6 +59,19 @@ from utils.keyboards import (
 router = Router(name="customer_orders")
 
 
+@router.message(F.text == "/cancel")
+async def customer_cancel(message: Message, reseller_id: int, state: FSMContext):
+    """راه فرار عمومی از هر FSM مشتری (طبق قانون #۳ پروژه)."""
+    current = await state.get_state()
+    if current is None:
+        await message.answer("در حال حاضر در هیچ فرآیندی نیستید.")
+        return
+    reseller = await fetch_one("SELECT support_contact FROM resellers WHERE id = %s", (reseller_id,))
+    has_support = bool(reseller and reseller["support_contact"])
+    await state.clear()
+    await message.answer("عملیات لغو شد.", reply_markup=customer_main_reply_keyboard(has_support_contact=has_support))
+
+
 @router.message(F.text.startswith("/start"))
 async def customer_start(message: Message, reseller_id: int, state: FSMContext):
     await state.clear()
@@ -80,23 +93,6 @@ async def customer_start(message: Message, reseller_id: int, state: FSMContext):
         "به ربات فروش خوش آمدید! 👋\nبرای مشاهده‌ی بسته‌ها از دکمه‌ی زیر (پایین صفحه) استفاده کنید.",
         reply_markup=customer_main_reply_keyboard(has_support_contact=has_support),
     )
-
-
-@router.message(F.text == "/cancel")
-async def generic_cancel(message: Message, state: FSMContext):
-    """
-    راه فرار عمومی از FSM برای هر کسی که هندلر /cancel اختصاصی خودش را ندارد
-    (اپراتور و مشتری). صاحب نماینده هندلر خودش را در handlers/reseller/start.py
-    دارد که چون روتر نماینده زودتر رجیستر می‌شود، اول اجرا می‌شود؛ این هندلر
-    فقط وقتی می‌رسد که فرستنده صاحب نماینده نبوده (طبق قانون #۲ پروژه، چک هویت
-    تو فیلتر است، پس آپدیت اینجا هم قابل دریافت می‌ماند).
-    """
-    current = await state.get_state()
-    if current is None:
-        await message.answer("در حال حاضر در هیچ فرآیندی نیستید.")
-        return
-    await state.clear()
-    await message.answer("عملیات لغو شد.")
 
 
 async def _back_to_main_menu(message: Message, reseller_id: int, state: FSMContext):
